@@ -28,62 +28,62 @@ start:
     call setProtectedMode     	
 
     ; Handle found Host Controllers 
-	xor edi, edi 
-	mov cx, NumberOfValidHC
+    xor edi, edi 
+    mov cx, NumberOfValidHC
   
   loopOverHC:  
 	
-	lea edx, HCBaseAddressStorage
-	lea esi, HCPCIAddressStorage
-	mov ebx, dword ptr [edx + edi]	; Gets Base address
-	mov eax, dword ptr [esi + edi]	; Gets PCI address 
-	cmp ebx, 0                  	; If Valid Base Address
-	jz outLoopOverHC            	; Out in not Valid 
+    lea edx, HCBaseAddressStorage
+    lea esi, HCPCIAddressStorage
+    mov ebx, dword ptr [edx + edi]  ; Gets Base address
+    mov eax, dword ptr [esi + edi]  ; Gets PCI address 
+    cmp ebx, 0                      ; If Valid Base Address
+    jz outLoopOverHC                ; Out in not Valid 
 	
-	mov HCBaseAddress, ebx 	    	; Save Base Address 
-	mov HCPCIAddress, eax 			; Write PCI address 
+	mov HCBaseAddress, ebx 	        ; Save Base Address 
+	mov HCPCIAddress, eax           ; Write PCI address 
 	
-	;-------------------------------;
-	; Handle Host Controllers       ; 
-	; EHCI, xHCI are supported      ;
+    ;-------------------------------;
+    ; Handle Host Controllers       ; 
+    ; EHCI, xHCI are supported      ;
 
-	lea ebx, HCPCIParamStorage		; HC parameters
-	mov eax, [ebx + edi]			; 
-	shr ax, 8                  		; ProgIF in AL
-	and ax, 00FFh 				    ; 
+    lea ebx, HCPCIParamStorage      ; HC parameters
+    mov eax, [ebx + edi]            ; 
+    shr ax, 8                  	    ; ProgIF in AL
+    and ax, 00FFh 				    ; 
 
 	; edi - contains offset for HC Addresses
-	call displayUSBtype             ;  
+    call displayUSBtype               
 
-	cmp al, xHCI_ProgIF             ; xHCI HC 
-	je handleXHCI 
+    cmp al, xHCI_ProgIF             ; xHCI HC 
+    je handleXHCI 
 
-	cmp al, EHCI_ProgIF             ; EHCI HC 
-	je handleEHCI
+    cmp al, EHCI_ProgIF             ; EHCI HC 
+    je handleEHCI
 
-	jmp handleOtherHC               ; 
+    jmp handleOtherHC                
   
   handleXHCI:
-	call processXHCIHC              ; Main xHCI Function
-	jmp NextOverHCloop
+    call processXHCIHC              ; Main xHCI Function
+    jmp NextOverHCloop
   
   handleEHCI:
-	call processEHCIHC				; Main EHCI Function
-	jmp NextOverHCloop 
+    call processEHCIHC              ; Main EHCI Function
+    jmp NextOverHCloop 
   
   handleOtherHC:
-  	call dummyHCPrint               ; 'No support' print 	
+    call dummyHCPrint               ; 'No support' print 	
   
   NextOverHCloop:
 	
-	add edi, 4                      ; Offset for HC Addresses 
-	call printNewLineRM
+    add edi, 4                      ; Offset for HC Addresses 
+    call printNewLineRM
     
     loop loopOverHC  
 
   outLoopOverHC:
 
-	int 20h 	
+    int 20h 	
 
 ; =====================================================================================================
 ; Extra libs
