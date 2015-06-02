@@ -3,6 +3,7 @@
 EHCI-driver with related extensions which are written in Assembly. 
 
 Implemented code could be used as a tunable module in projects (e.g. in embedded operation systems) where USB support is needed. 
+
 Functionality is divided into parts:
 
 * Host controller detection via PCI configuration space (with separate approach for UHCI, OHCI, EHCI, xHCI controlles)  

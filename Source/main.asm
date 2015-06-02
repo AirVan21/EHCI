@@ -37,11 +37,11 @@ start:
     lea esi, HCPCIAddressStorage
     mov ebx, dword ptr [edx + edi]  ; Gets Base address
     mov eax, dword ptr [esi + edi]  ; Gets PCI address 
-    cmp ebx, 0                      ; If Valid Base Address
+    cmp ebx, 0                     	 ; If Valid Base Address
     jz outLoopOverHC                ; Out in not Valid 
 	
-	mov HCBaseAddress, ebx 	        ; Save Base Address 
-	mov HCPCIAddress, eax           ; Write PCI address 
+    mov HCBaseAddress, ebx 	        ; Save Base Address 
+    mov HCPCIAddress, eax           ; Write PCI address 
 	
     ;-------------------------------;
     ; Handle Host Controllers       ; 
@@ -52,7 +52,7 @@ start:
     shr ax, 8                  	    ; ProgIF in AL
     and ax, 00FFh 				    ; 
 
-	; edi - contains offset for HC Addresses
+    ; edi - contains offset for HC Addresses
     call displayUSBtype               
 
     cmp al, xHCI_ProgIF             ; xHCI HC 
