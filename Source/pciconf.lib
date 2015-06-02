@@ -1,0 +1,249 @@
+
+initPCIConfig macro
+
+; =====================================================================================================
+; CONSTs for PCI Configuration Space
+
+; INTEGER CONST
+CONFIG_ADDR   = 0CF8h     ; Specifies configuration access  
+CONFIG_DATA   = 0CFCh     ; Place where data will be transfered
+DEFAULT_ADDR  = 80000000h ; First PCI ADDR
+DEVICE_STEP   = 800h      ; Device Step on PCI detour 
+FUNCTION_STEP = 100h      ; Function Step on PCI detour
+OUT_OF_BUS    = 800000h   ; First out of Bus digit
+HC_AMOUNT	  = 16        ; Maximum Amount of Host Controllers 
+
+UHCI_ProgIF	  = 00h       ; 
+OHCI_ProgIF   = 10h		  ; 
+EHCI_ProgIF   = 20h       ; 
+xHCI_ProgIF   = 30h       ;
+
+; PCI Configuration space registers displacement
+DEVICE_VENDOR = 0h       ; (Device[31-16],Vendor[15-0) 
+CLASS_SUBCLASS = 08h     ; (ClassCode[31-24], SubClass[23-16], Prog IF[15-8], Revision ID[7-0])
+USB_ID = 0C03h           ; 0x0C - Class, 0x03 - SubClass
+BAR0 = 10h               ; #0
+BAR1 = 14h               ; #1
+BAR2 = 18h               ; #2
+BAR3 = 1Ch               ; #3 
+BAR4 = 20h               ; #4
+BAR5 = 24h               ; #5   
+
+; =====================================================================================================
+; Storage for 
+
+HCBaseAddressStorage:
+
+	dd HC_AMOUNT DUP(0)
+
+HCPCIAddressStorage:
+
+	dd HC_AMOUNT DUP(0)
+
+HCPCIParamStorage:
+
+	dd HC_AMOUNT DUP(0)	
+
+; =====================================================================================================
+; Testing parameters 
+
+; Describes amount of found HC 
+; Updated in 'searchUSBHCinPCI' 
+;
+NumberOfValidHC dw 		0h
+
+PCIParameter	dd 		0h 
+
+; =====================================================================================================
+
+	; Main Search Function
+	; Retrievs information about PCI Device from Configuration space
+	;
+	; ECX - Contains PCI Address
+	searchUSBHCinPCI:
+
+		mov eax, ecx			; for OUT command
+		mov dx, CONFIG_ADDR		; sets out PORT address
+		out dx, eax 			; sends request
+		mov dx, CONFIG_DATA		; sets input PORT address
+		in  eax, dx				; gets data from PCI device
+		
+		cmp ax, -1              ; check valid payload
+		
+		jz nextDevice           ; if (invalid) then handle next device      
+		call getPCIInfo         ; Extract valuable info 
+		jmp nextFunction        ; Goes to check next function		
+
+	; Review PCI Configuration Space Info
+	; Continue Processing only USB HCs
+	;
+	; ECX - Contains PCI Address
+	getPCIInfo:
+
+		push eax               ; PCI Class-SubClass information here 
+		shr eax, 16            ; Class-SubClass in ax 
+		cmp  ax, USB_ID        ; It is USB HC device?
+		pop  eax               ; Recover EAX
+
+		
+		jz processUSBHC        ; Handle USB HCs  
+		
+		db 0C3h                ; ret 
+
+	; Retrievs in PCI(USB) Device Nonzero BAR 
+	; Continue Processing only USB HCs
+	;
+	; ECX - Contains PCI Address
+	processUSBHC:
+		
+		push ecx               ; Save registers
+		push dx                ;
+		push si                ;
+
+		inc [NumberOfValidHC]  ; Increase found HC counter 
+		call savePCIAddress	   ; Save HCs PCI Address 
+		
+		sub cx, CLASS_SUBCLASS ; Cuz ECX firstly for CLASS retriving 
+		add cx, BAR0           ; First BAR offset
+		mov esi, ecx           ; Address for PCI device
+		
+		mov cx, 6              ; Amount of bars | (set this variable)
+	   
+	   cycbar:
+		mov eax, esi           ; USB Device PCI Address (ecx) 
+		add si, 04h            ; Next Bar
+		mov dx, CONFIG_ADDR    ; Sets out PORT address
+		out dx, eax            ; Sends request
+		mov dx, CONFIG_DATA    ; Sets input PORT address
+		in  eax, dx            ; Sets data from PCI device
+		cmp ax, 0h             ; Valid if nonzero
+		jz nextbar             ; Jump to next bar 
+		
+		call saveBARValue		; Saves Base Address
+		       
+	   nextbar:	
+
+		loop cycbar            ; loop it
+		
+		pop si                 ;
+		pop dx                 ;
+		pop ecx                ;
+
+		db 0C3h                ; ret 
+
+	; Saves Base Address For Future Processing
+	; 
+	; EAX - Contains Base Address
+	; ECX - Contains PCI Address
+	saveBARValue proc near 
+		
+		push eax 				; Save registers
+		push ebx                ; 
+		push ecx                ;
+		;-----------------------;
+		
+		push eax                ; Store Base Address (which should be stored)
+		
+		; Saves Base Address to Storage
+		lea ebx, HCBaseAddressStorage
+
+		mov cx, HC_AMOUNT        ; Amount of Possible BAR (to save)
+
+	  storageCycleBA:
+		
+		mov eax, dword ptr [ebx]; Get BAR from storage 
+		cmp eax, 0              ; If Empty then Write In Mem 
+		jz writeBarToStorrage   ;
+		add ebx, 4              ; Mov to the next place 
+
+		loop storageCycleBA
+
+	  writeBarToStorrage:
+
+		pop eax                 ; Get Base Address
+		mov [ebx], eax          ; Save BA in Memory 
+		
+		;-----------------------;
+		pop ecx                 ;   
+		pop ebx                 ; Recover registers
+		pop eax                 ; 
+
+		db 0C3h                 ; ret
+
+	endp
+
+	; Saves HCs PCI Address For Future Processing
+	; Saves HCs Class Information 
+	; 
+	; ECX - Contains PCI Address
+	savePCIAddress proc near
+		
+		push eax 				; Save registers
+		push ebx                ; 
+		push ecx                ;
+		push edx                ;
+		push edi                ;
+	 	;-----------------------;
+
+	 	mov edi, eax 		    ; Class information about PCI Device 
+		push ecx                ; Store PCI Address (which should be stored)
+		
+		; Saves Base Address to Storage
+		lea ebx, HCPCIAddressStorage
+		lea edx, HCPCIParamStorage
+
+		mov cx, 10              ; Amount of Possible Addresses (to save)
+
+	  storageCyclePA:
+		
+		mov eax, dword ptr [ebx]; Get BAR from storage 
+		cmp eax, 0              ; If Empty then Write In Mem 
+		jz writePCIToStorrage   ;
+		add ebx, 4              ; Mov to the next place
+		add edx, 4              ; 
+
+		loop storageCyclePA     ;
+	  
+	  writePCIToStorrage:
+		
+		pop eax                 ; Get PCI Address
+		sub eax, CLASS_SUBCLASS	; Default PCI Address
+		mov [ebx], eax          ; Save Address in Memory
+		mov [edx], edi          ; Save Class Information 
+		
+		;-----------------------;
+		pop edi                 ;
+		pop edx                 ;
+		pop ecx                 ;   
+		pop ebx                 ; Recover registers
+		pop eax                 ; 
+
+		db 0C3h                 ; ret
+
+	endp                 
+
+	; Continue PCI device detour with DEVICE_STEP increase in address 
+	; 
+	nextDevice:
+		and ecx, 0FFFFF800h    		; Clear all before device part
+		add ecx, DEVICE_STEP   		; Device step 
+		add ecx, CLASS_SUBCLASS		; Add Displacement (Purpose Search)
+		test ecx, OUT_OF_BUS   		; First Number out of Bus Digit
+		jz searchUSBHCinPCI         ; Next device iteration
+		jmp outOfSearchUSBHCinPCI   ; Out of BAR Check 
+
+	; Continue PCI device detour with FUNCTION_STEP increase in address 
+	; 		
+	nextFunction:
+		add ecx, FUNCTION_STEP 		; Function step
+		test ecx, OUT_OF_BUS   		; First out of Bus digit
+		jz searchUSBHCinPCI         ; Next function iteration
+		jmp outOfSearchUSBHCinPCI	;
+
+	; Out Of PCI Seatch 
+	;
+	outOfSearchUSBHCinPCI:
+
+		db 0C3h                			; ret 
+	
+endm
