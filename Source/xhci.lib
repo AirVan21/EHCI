@@ -1,0 +1,35 @@
+initXHCI macro
+	
+; =====================================================================================================
+
+ 	; Prints information about HC I/O Registers 
+	;
+	; FS  - contains Selector For Zero Memory
+	processXHCIHC proc near  
+
+		; Include code for Operational Registers Displacement CalCulation 
+		
+		push ebx           		 	; Save 
+		push esi				 	;
+		;---------------------------;
+		
+		; Align Base Address		
+		mov esi, [HCBaseAddress]
+		and si, 0FFF0h
+		mov [HCBaseAddress], esi 
+		
+		; Could be included if needed
+		;  
+		;call updateCapRegInfoXHCI
+		;call printCapRegInfoXHCI
+
+		;---------------------------;
+  		pop esi 				    ;
+		pop ebx            		    ; Recover  
+
+
+  		ret                         ; 
+
+	endp
+
+endm

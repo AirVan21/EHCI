@@ -1,0 +1,239 @@
+ initCapacityInfoXHCI macro
+
+; =====================================================================================================
+; Capacity Registers Offsets
+
+xhciCAPLENGTHOffset      = 00h
+xhciHCSPARAMS1Offset     = 04h 
+xhciHCSPARAMS2Offset     = 08h 
+xhciHCSPARAMS3Offset     = 0Ch 
+xhciHCCPARAMS1Offset     = 10h
+xhciDBOffset             = 14h
+xhciRTSOffset            = 18h
+xhciHCCPARAMS2Offset     = 1Ch
+
+; =====================================================================================================
+; Capacity Registers String CONSTS 
+
+xhciCAPLENGTHMsg       db "Version    CAPLENGTH  = $"
+xhciHCSPARAMS1Msg      db "HCSPARAMS1 Register   = $"
+xhciHCSPARAMS2Msg      db "HCSPARAMS2 Register   = $"
+xhciHCSPARAMS3Msg      db "HCSPARAMS3 Register   = $"
+xhciHCCPARAMS1Msg      db "HCCPARAMS1 Register   = $"
+xhciDBMsg              db "DoorbellOf Register   = $"
+xhciRTSMsg             db "RuntimeOf  Register   = $"
+xhciHCCPARAMS2Msg      db "HCCPARAMS2 Register   = $"
+
+; =====================================================================================================
+; Capacity Registers Table
+
+xhciCAPLENGTHReg        dd 00h ; With HCIVERSIONTReg 
+xhciHCSPARAMS1Reg       dd 00h
+xhciHCSPARAMS2Reg       dd 00h
+xhciHCSPARAMS3Reg       dd 00h
+xhciHCCPARAMS1Reg       dd 00h
+xhciDBReg               dd 14h
+xhciRTSReg              dd 18h
+xhciHCCPARAMS2OReg      dd 1Ch
+
+; =====================================================================================================
+
+    ; Prints information about HC Capacity I/O Registers 
+    ;
+    ; FS  - contains Selector For Zero Memory
+    printCapRegInfoXHCI proc near
+
+        push ebx                ; Save ebx
+        push edx                ; 
+        push eax                ;
+        ;------------------------
+        
+        ; Show СAPLENGTH
+        lea dx, xhciCAPLENGTHMsg      
+        mov ah, 09
+        int 21h                 ; Print string
+
+        mov ebx, [xhciCAPLENGTHReg]  
+        
+        push bx                 ; Saves Low Part
+        shr ebx, 16             ; Gets Significant Part
+        push bx                 ; Prints Base Address
+        call printWordFromStackRM
+        call printWordFromStackRM        
+
+        call printNewLineRM     ; Points to the new line 
+
+        ; Show HCSPARAMSR1
+        lea dx, xhciHCSPARAMS1Msg       
+        mov ah, 09
+        int 21h                 ; Print string
+
+        mov ebx, [xhciHCSPARAMS1Reg]  
+        
+        push bx                 ; Saves Low Part
+        shr ebx, 16             ; Gets Significant Part
+        push bx                 ; Prints Base Address
+        call printWordFromStackRM
+        call printWordFromStackRM        
+
+        call printNewLineRM     ; Points to the new line 
+        
+        ; Work with HCSPARAMSR2eg
+        lea dx, xhciHCSPARAMS2Msg; Address for HCCPARAMSMsg 
+        mov ah, 09h             ; Print string function
+        int 21h                 ;
+        mov ebx, [xhciHCSPARAMS2Reg] 
+
+        push bx                 ; Saves Low Part
+        shr ebx, 16             ; Gets Significant Part
+        push bx                 ; Prints Base Address
+        call printWordFromStackRM
+        call printWordFromStackRM    
+
+        call printNewLineRM     ; Points to the new line 
+
+        ; Work with HCSPARAMS3Reg
+        lea dx, xhciHCSPARAMS3Msg; Address for HCCPARAMSMsg 
+        mov ah, 09h             ; Print string function
+        int 21h                 ;
+        mov ebx, [xhciHCSPARAMS3Reg] 
+
+        push bx                 ; Saves Low Part
+        shr ebx, 16             ; Gets Significant Part
+        push bx                 ; Prints Base Address
+        call printWordFromStackRM
+        call printWordFromStackRM    
+
+        call printNewLineRM     ; Points to the new line 
+
+        ; Work with HCCPARAMS1Reg
+        lea dx, xhciHCCPARAMS1Msg; Address for HCCPARAMSMsg 
+        mov ah, 09h             ; Print string function
+        int 21h                 ;
+        mov ebx, [xhciHCCPARAMS1Reg] 
+
+        push bx                 ; Saves Low Part
+        shr ebx, 16             ; Gets Significant Part
+        push bx                 ; Prints Base Address
+        call printWordFromStackRM
+        call printWordFromStackRM    
+
+        call printNewLineRM     ; Points to the new line
+
+        ; Work with xhciDBReg
+        lea dx, xhciDBMsg       ; Address for HCCPARAMSMsg 
+        mov ah, 09h             ; Print string function
+        int 21h                 ;
+        mov ebx, [xhciDBReg]    ; 
+
+        push bx                 ; Saves Low Part
+        shr ebx, 16             ; Gets Significant Part
+        push bx                 ; Prints Base Address
+        call printWordFromStackRM
+        call printWordFromStackRM    
+
+        call printNewLineRM     ; Points to the new line  
+        
+        ; Work with xhciRTSReg
+        lea dx, xhciRTSMsg      ; Address for HCCPARAMSMsg 
+        mov ah, 09h             ; Print string function
+        int 21h                 ;
+        mov ebx, [xhciRTSReg]   ; 
+
+        push bx                 ; Saves Low Part
+        shr ebx, 16             ; Gets Significant Part
+        push bx                 ; Prints Base Address
+        call printWordFromStackRM
+        call printWordFromStackRM    
+
+        call printNewLineRM     ; Points to the new line
+
+        ; Work with xhciHCCPARAMS2OReg
+        lea dx, xhciHCCPARAMS2Msg; Address for HCCPARAMSMsg 
+        mov ah, 09h             ; Print string function
+        int 21h                 ;
+        mov ebx, [xhciHCCPARAMS2OReg]    
+
+        push bx                 ; Saves Low Part
+        shr ebx, 16             ; Gets Significant Part
+        push bx                 ; Prints Base Address
+        call printWordFromStackRM
+        call printWordFromStackRM    
+
+        call printNewLineRM     ; Points to the new line    
+
+        ;-----------------------;
+        pop eax                 ; 
+        pop edx                 ;
+        pop ebx                 ;
+        
+        ret
+
+    endp
+    
+    ; Retieves and prints EHCI Revision number 
+    ;
+    ; FS  - is used for Addressing 
+    retrieveHCIVERSIONXHCI proc near
+        
+        push ax                    ; Save ax
+        push ebx                   ; Save ebx 
+        
+        add ebx, 2                 ; Offset for HCIVersion 
+        mov ax, fs:[ebx]           ;   
+                                   ; Prints CAPLENGTH
+        push ax                    ; CAPLENGTH1
+        call printWordFromStackRM
+        
+        pop ebx          
+        pop ax                     ; Recover registers
+         
+        ret
+    endp
+
+    ; Updates information about Capacity Registres in Memory  
+    ;
+    updateCapRegInfoXHCI proc near
+        
+        push ebx                 ; Save Registers  
+        push eax                 ;
+        ;------------------------;
+
+        mov ebx, HCBaseAddress        ; Base Address for HC
+        
+        mov eax, fs:[ebx + xhciCAPLENGTHOffset]
+        mov [xhciCAPLENGTHReg], eax   ; Save CAPLENGTH + HCIVersion
+        and    ax, 00FFh              ; Leave CAPLENGTH
+        mov [OperRegOff], ax          ; Saves Offset to Operations Registers 
+
+
+        mov eax, fs:[ebx + xhciHCSPARAMS1Offset]
+        mov [xhciHCSPARAMS1Reg], eax  ; Save HCSPARAMS1 Register
+
+        mov eax, fs:[ebx + xhciHCSPARAMS2Offset]
+        mov [xhciHCSPARAMS2Reg], eax  ; Save HCSPARAMS2 Register
+
+        mov eax, fs:[ebx + xhciHCSPARAMS3Offset]
+        mov [xhciHCSPARAMS3Reg], eax  
+
+        mov eax, fs:[ebx + xhciHCCPARAMS1Offset]
+        mov [xhciHCCPARAMS1Reg], eax  
+
+        mov eax, fs:[ebx + xhciDBOffset]
+        mov [xhciDBReg], eax  
+
+        mov eax, fs:[ebx + xhciRTSOffset]
+        mov [xhciRTSReg], eax  
+
+        mov eax, fs:[ebx + xhciHCCPARAMS2Offset]
+        mov [xhciHCCPARAMS2OReg], eax          
+
+        ;------------------------;
+        pop eax                  ; 
+        pop ebx                  ; 
+        
+        ret 
+
+    endp 
+
+endm
