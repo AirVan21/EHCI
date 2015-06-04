@@ -11,21 +11,21 @@
     include bulk.lib
     include timer.lib 
     USBCode segment use16
-    assume	cs:USBCode, ds:USBCode, es:USBCode
+    assume  cs:USBCode, ds:USBCode, es:USBCode
     .486p
     org 100h   
 
 main proc far
 
 start:
-	
+
     ; Setting Default PCI Address 
     ; ECX - parameter for searchUSBHCinPCI 
     mov ecx, (DEFAULT_ADDR + CLASS_SUBCLASS)
     call searchUSBHCinPCI
 
     ; Setting FS register for Memory Addressing
-    call setProtectedMode     	
+    call setProtectedMode     
 
     ; Handle found Host Controllers 
     xor edi, edi 
@@ -72,7 +72,7 @@ start:
     jmp NextOverHCloop 
   
   handleOtherHC:
-    call dummyHCPrint               ; 'No support' print 	
+    call dummyHCPrint               ; 'No support' print 
   
   NextOverHCloop:
 	
