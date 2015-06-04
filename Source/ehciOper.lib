@@ -1,0 +1,194 @@
+; Ivan Abramov (2015)
+
+initOperationalInfo macro
+
+     
+; =====================================================================================================
+; Operational Registers Offsets
+
+USBCMDoffset   = 00h
+USBSTSoffset   = 04h
+USBINToffset   = 08h
+FRINDEXoffset  = 0Ch
+CTRLDSoffset   = 10h 
+PeriodLBoffset = 14h
+AsуnchLBoffset = 18h 
+CONFIGoffgset  = 40h
+PORTSCOffset   = 44h
+
+; =====================================================================================================
+; Operational Registers String CONSTS 
+
+USBCMDMsg      db "USBCMD Register     = $"
+USBSTSMsg      db "USBSTS Register     = $"
+USBINTMsg      db "USBINT Register     = $"
+FRINDEXMsg     db "FRINDEX Register    = $"
+CTRLDSMsg      db "CTRLDS Register     = $" 
+PListBaseMsg   db "Periodic List Base  = $"
+AListBaseMsg   db "Asynch List Base    = $"
+CONFIGMsg      db "CONFIG Register     = $"
+PORTSCMsg      db "PORTSC Register     = $"
+
+; =====================================================================================================
+; Operational Registers Table 
+; 
+; [31:24] - reserved; [23:16] - Interrupt interval; [15:12] - reserved; [11] - Asynch Shedule Park; [10] - reserved
+; [9:8] - Asynch Shedule Park Mode; [7] - Light HC reset; [6] - Interrupt on Asynch Doorbell; [5] - Async Schedule; [4] - Periodic Schedule;  
+; [3:2] - Frame list size; [1] - HC Reset; [0] - Run/Stop bit 
+; Default = 00080000h 
+USBCMDReg            dd 0h 
+; [0] - Complete USB Transation  
+USBSTSReg            dd 0h 
+USBINTReg            dd 0h 
+FRINDEXReg           dd 0h 
+CTRLDSSEGMENTReg     dd 0h
+PeriodLBReg          dd 0h 
+; [31:5] - Pointer to QH ; [4:0] - zeros (Pointer 32 byte aligned)
+AsуnchLBReg          dd 0h
+; HC configuration auxiliary use 
+CONFIGReg            dd 0h 
+
+; =====================================================================================================
+
+    ; Retieves and prints Operational register (USBCMD, USBSTS) 
+    ; 
+    ; EAX - contains offset for certain Register
+    ; EBX - contains Base Address (BAR)
+    retrieveOperRegister proc near
+        
+        push ebx                ; Save ebx 
+        push eax                ; Save eax
+        push ecx                ;
+
+        xor ecx, ecx            ;
+        
+        add ebx, eax            ; 
+        mov cx, OperRegOff      ; Get Offset For Operational Registers 
+        add ebx, ecx            ; Add Offset for Operational registers
+
+        mov eax, fs:[ebx]       ; Getting USBCMD
+        push ax                 ; Print USBCMD
+        shr eax, 16             ;
+        push ax                 ;
+        call printWordFromStackRM
+        call printWordFromStackRM
+        
+        pop ecx                 ; Recover Registers
+        pop eax                 ;
+        pop ebx                 ;
+        
+        ret
+    
+    endp
+
+
+    ; Updates information about Operation Registres in memory  
+    ;
+    updateOperRegInfo proc near
+        
+        push ebx                 ; Save Registers  
+        push eax                 ; 
+        ;------------------------;
+
+        mov ebx, HCBaseAddress   ; Base Address for HC 
+
+        mov ax, OperRegOff       ;
+        add ebx, eax             ; Offset for Operation Registers
+
+        mov eax, fs:[ebx]        ; USBCMD
+        mov USBCMDReg, eax       ; Save USBCMD
+
+        add ebx, 04h             ;
+        mov eax, fs:[ebx]        ; USBSTS 
+        mov USBSTSReg, eax       ; Save USBSTS
+
+        add ebx, 04h             ;
+        mov eax, fs:[ebx]        ; USBINT  
+        mov USBINTReg, eax       ; Save USBINT 
+
+        add ebx, 04h             ;
+        mov eax, fs:[ebx]        ; FRINDEX  
+        mov FRINDEXReg, eax      ; Save FRINDEX  
+                 
+        add ebx, 04h             ;
+        mov eax, fs:[ebx]        ; CTRLDSSEGMENT  
+        mov CTRLDSSEGMENTReg, eax; Save CTRLDSSEGMENT 
+
+        add ebx, 04h             ;
+        mov eax, fs:[ebx]        ; Period List Base
+        mov PeriodLBReg, eax     ; Save Period List Base
+
+        add ebx, 04h             ;
+        mov eax, fs:[ebx]        ; Asуnch List Base
+        mov AsуnchLBReg, eax     ; Save Asуnch List Base
+
+        add ebx, 04h             ;
+        mov eax, fs:[ebx]        ; CONFIG
+        mov CONFIGReg, eax       ; Save CONFIG
+
+        ;------------------------;
+        pop eax                  ; 
+        pop ebx                  ; Recover
+
+        ret 
+
+    endp
+
+    ; Sets USBCMD (Asynch Queue) bit to ONE 
+    ; 
+    ; Wait Until transaction end 
+    runAQueueinCMD proc
+
+        push edx                        ; Save Register
+        push ebx                        ; 
+        ;-------------------------------;
+
+        mov ebx, HCBaseAddress          ; Gets Base Address
+
+        xor edx, edx                    
+
+        mov dx, OperRegOff              ; Offset for Operational Register
+        add ebx, edx                    ; USBCMD Base Address 
+
+        mov edx, fs:[ebx]               ; Gets USBCMD Register 
+        or edx, 20h                     ; Clears Asynch Queue bit 
+        mov fs:[ebx], edx               ; Set updated value 
+                                        ;
+        ;-------------------------------;
+                                        ; Recover Register 
+        pop ebx                         ;
+        pop edx                         ; 
+
+        ret 
+    
+    endp           
+
+    ; Sets USBCMD (Asynch Queue) bit to ZERO  
+    ; 
+    ; EBX - contains Base Address 
+    stopAQueueinCMD proc
+
+        push edx                        ; Save Register
+        push ebx                        ; 
+        ;-------------------------------;              
+
+        mov ebx, HCBaseAddress          ; Gets Base Address
+        
+        xor edx, edx     
+        
+        mov dx, OperRegOff              ; Offset for Operational Register
+        add ebx, edx                    ; USBCMD Base Address 
+
+        mov edx, fs:[ebx]               ; Gets USBCMD Register 
+        and edx, 0ffffffdfh             ; Clears Asynch Queue bit 
+        mov fs:[ebx], edx               ; Set updated value 
+        ;-------------------------------;
+                                        ; Recover Register 
+        pop ebx                         ;
+        pop edx                         ; 
+
+        ret 
+    
+    endp
+
+endm
