@@ -18,7 +18,7 @@ HCSPPORTROUTEOffset = 0Ch
 CAPLENGTHMsg      db "CAPLENGTH | Version    = $"
 HCSPARAMSMsg      db "HCSPARAMS   Register   = $"
 HCCPARAMSMsg      db "HCCPARAMS   Register   = $"
-HCSPPORTROUTEMSg  db "HCSPPORTR   Register  = $"
+HCSPPORTROUTEMSg  db "HCSPPORTR   Register   = $"
 
 ; =====================================================================================================
 ; Capacity Registers Table
@@ -35,7 +35,7 @@ HCSPPORTROUTEReg    dd 00h
     ; FS  - contains Selector For Zero Memory
     printCapRegInfoEHCI proc near
 
-        push ebx                   ; Save ebx
+        push ebx                ; Save ebx
         push edx                ; 
         push eax                ;
         ;------------------------
@@ -93,7 +93,7 @@ HCSPPORTROUTEReg    dd 00h
         
         push bx                 ; Saves Low Part
         shr ebx, 16             ; Gets Significant Part
-        push bx                    ; Prints Base Address
+        push bx                 ; Prints Base Address
         call printWordFromStackRM
         call printWordFromStackRM        
 
