@@ -1,3 +1,5 @@
+; Ivan Abramov (2015)
+
 initProtectedMode macro
 
 ; INT CONSTS
@@ -296,10 +298,6 @@ backToRM:
     call enable_interrupts         ; Enables interrupts
         
     db 0C3h                     ; ret
-
-; =====================================================================================================
-; Extra libs
-
 
 ; =====================================================================================================
 ; GDT parameters

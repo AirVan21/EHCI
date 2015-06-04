@@ -1,0 +1,143 @@
+; Ivan Abramov (2015)
+
+initCapacityInfo macro
+
+; =====================================================================================================
+; Capacity Registers Offsets
+
+CAPLENGTHOffset     = 00h
+HCIVERSIONOffset    = 02h
+HCSPARAMSOffset     = 04h 
+HCCPARAMSOffset     = 08h
+HCSPPORTROUTEOffset = 0Ch
+
+
+; =====================================================================================================
+; Capacity Registers String CONSTS 
+
+CAPLENGTHMsg      db "CAPLENGTH | Version    = $"
+HCSPARAMSMsg      db "HCSPARAMS   Register   = $"
+HCCPARAMSMsg      db "HCCPARAMS   Register   = $"
+HCSPPORTROUTEMSg  db "HCSPPORTR   Register  = $"
+
+; =====================================================================================================
+; Capacity Registers Table
+
+CAPLENGTHReg        dd 00h ; With HCIVERSIONTReg 
+HCSPARAMSReg        dd 00h
+HCCPARAMSReg        dd 00h
+HCSPPORTROUTEReg    dd 00h
+
+; =====================================================================================================
+
+    ; Prints information about HC Capacity I/O Registers 
+    ;
+    ; FS  - contains Selector For Zero Memory
+    printCapRegInfoEHCI proc near
+
+        push ebx                   ; Save ebx
+        push edx                ; 
+        push eax                ;
+        ;------------------------
+        
+        ; Show СAPLENGTH
+        lea dx, CAPLENGTHMsg    ; 
+        mov ah, 09
+        int 21h                 ; Print string
+
+        mov ebx, [CAPLENGTHReg] ; 
+        
+        push bx                 ; Saves Low Part
+        shr ebx, 16             ; Gets Significant Part
+        push bx                 ; Prints Base Address
+        call printWordFromStackRM
+        call printWordFromStackRM        
+
+        call printNewLineRM     ; Points to the new line 
+
+        ; Show HCSPARAMSM
+        lea dx, HCSPARAMSMsg    ; 
+        mov ah, 09
+        int 21h                 ; Print string
+
+        mov ebx, [HCSPARAMSReg] ; 
+        
+        push bx                 ; Saves Low Part
+        shr ebx, 16             ; Gets Significant Part
+        push bx                 ; Prints Base Address
+        call printWordFromStackRM
+        call printWordFromStackRM        
+
+        call printNewLineRM     ; Points to the new line 
+        
+        ; Work with HCCPARAMSReg
+        lea dx, HCCPARAMSMsg    ; Address for HCCPARAMSMsg 
+        mov ah, 09h             ; Print string function
+        int 21h                 ;
+        mov ebx, [HCCPARAMSReg] ; 
+
+        push bx                 ; Saves Low Part
+        shr ebx, 16             ; Gets Significant Part
+        push bx                 ; Prints Base Address
+        call printWordFromStackRM
+        call printWordFromStackRM    
+
+        call printNewLineRM     ; Points to the new line 
+
+        ; Show HCSPPORTROUTE
+        lea dx, HCSPPORTROUTEMSg; 
+        mov ah, 09
+        int 21h                 ; Print string
+
+        mov ebx, [HCSPPORTROUTEReg] 
+        
+        push bx                 ; Saves Low Part
+        shr ebx, 16             ; Gets Significant Part
+        push bx                    ; Prints Base Address
+        call printWordFromStackRM
+        call printWordFromStackRM        
+
+        call printNewLineRM     ; Points to the new line 
+        
+        ;-----------------------;
+        pop eax                 ; 
+        pop edx                 ;
+        pop ebx                 ;
+        
+        ret
+
+    endp
+
+    ; Updates information about Capacity Registres in Memory  
+    ;
+    updateCapRegInfoEHCI proc near
+        
+        push ebx                 ; Save Registers  
+        push eax                 ;
+        push ecx                 ;  
+        ;------------------------;
+
+        mov ebx, HCBaseAddress   ; Base Address for HC
+        
+        mov eax, fs:[ebx + CAPLENGTHOffset]
+        mov [CAPLENGTHReg], eax  ; Save CAPLENGTH + HCIVersion
+
+        mov eax, fs:[ebx + HCSPARAMSOffset]
+        mov [HCSPARAMSReg], eax  ; Save HCSPARAMS Register
+
+        mov eax, fs:[ebx + HCCPARAMSOffset]
+        mov [HCCPARAMSReg], eax  ; Save HCCPARAMS Register
+
+        mov eax, fs:[ebx + HCSPPORTROUTEOffset]
+        mov [HCSPPORTROUTEReg], eax 
+
+        ;------------------------;
+        pop ecx                  ; 
+        pop eax                  ; 
+        pop ebx                  ; 
+        
+        ret 
+
+    endp 
+
+endm
