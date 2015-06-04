@@ -15,14 +15,14 @@ xhciHCCPARAMS2Offset     = 1Ch
 ; =====================================================================================================
 ; Capacity Registers String CONSTS 
 
-xhciCAPLENGTHMsg       db "Version    CAPLENGTH  = $"
-xhciHCSPARAMS1Msg      db "HCSPARAMS1 Register   = $"
-xhciHCSPARAMS2Msg      db "HCSPARAMS2 Register   = $"
-xhciHCSPARAMS3Msg      db "HCSPARAMS3 Register   = $"
-xhciHCCPARAMS1Msg      db "HCCPARAMS1 Register   = $"
-xhciDBMsg              db "DoorbellOf Register   = $"
-xhciRTSMsg             db "RuntimeOf  Register   = $"
-xhciHCCPARAMS2Msg      db "HCCPARAMS2 Register   = $"
+xhciCAPLENGTHMsg        db "Version    CAPLENGTH  = $"
+xhciHCSPARAMS1Msg       db "HCSPARAMS1 Register   = $"
+xhciHCSPARAMS2Msg       db "HCSPARAMS2 Register   = $"
+xhciHCSPARAMS3Msg       db "HCSPARAMS3 Register   = $"
+xhciHCCPARAMS1Msg       db "HCCPARAMS1 Register   = $"
+xhciDBMsg               db "DoorbellOf Register   = $"
+xhciRTSMsg              db "RuntimeOf  Register   = $"
+xhciHCCPARAMS2Msg       db "HCCPARAMS2 Register   = $"
 
 ; =====================================================================================================
 ; Capacity Registers Table

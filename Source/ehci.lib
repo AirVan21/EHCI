@@ -1,0 +1,2270 @@
+initEHCI macro
+    
+; =====================================================================================================
+; Variables
+
+EECPvalue                    dw 0h     
+
+isVerbosePrint               db 0h 
+
+OperRegOff                   dw 20h
+HCPCIAddress                 dd 0h
+HCBaseAddress                dd 0h 
+USBLEGSUPReg                 dd 0h
+USBLEGCTLSTSReg              dd 0h
+
+ConncetedUSBDeviceAmount     dw 0h
+TreeLevel                    dw 0h 
+NumberOfHCPorts              dw 0h  
+
+; Paragraph style 
+FrameAddress                 dw 0h
+AlignedFrameAddress          dw 0h  
+
+; =====================================================================================================
+; CONSTS 
+
+USBLEGSUPoffset          = 00h 
+USBLEGCTLSTSoffset       = 04h
+ZeroEndpoint             = 00h 
+
+InputParameter           = 082h  
+
+; =====================================================================================================
+; Debug Strings 
+
+USBLEGSUPmsg            db "USBLEGSUP  Register = $"
+USBLEGCTLSmsg           db "USBLEGCTLS Register = $"
+
+sTakeBIOSControl        db "Take EHCI control from BIOS", 13, 10, "$"
+sHCResetDone            db "HC Reset Done", 13, 10, "$"
+sHCInitDone             db "HC Init Done", 13, 10, "$"
+
+sDeviceDescriptorMsg    db "Get Device Descriptor   ", 13, 10, "$"
+sDeviceEnumerationMsg   db "Device Enumeration      ", 13, 10, "$"
+sStringDescriptorMsg    db "Get String Descriptor   ", 13, 10, "$"
+sInterfaceDescriptMsg   db "Get Interface Descriptor   ", 13, 10, "$"
+sHubDescriptorMsg       db "Get Hub Descriptor      ", 13, 10, "$"
+sHubStatusMsg           db "Get Hub Status          ", 13, 10, "$"
+sDeviceConfigMsg        db "Get Device Configuration", 13, 10, "$"
+sSetDeviceConfigMsg     db "Set Device Configuration", 13, 10, "$"
+sConfigDescMsg          db "Get Device Config Descriptor", 13, 10, "$"
+sPortStatusMsg          db "Port Status              ", 13, 10, "$"
+sPortPowerOnMsg         db "Ports Power is On          ", 13, 10, "$"
+sPortEnableMsg          db "Enable Ports              ", 13, 10, "$"
+sConnectedDevNumMsg     db "Number of Connected Devices = $"
+sLowSpeedDevice         db "Low  Speed Device", 13, 10, "$"
+sHighSpeedDeice         db "High Speed Device,$"
+sHighSpeedHub           db "High Speed Hub,$"
+
+sRootHubPort            db "Root Hub Port : $"
+sHubPort                db "Hub Port $"
+sHSDeviceAddr           db " Addr = $"
+sDisconnectedPort       db "Empty ", 13, 10, "$"
+sDumpFile               db "dump.log", 0
+sResultPrint            db "Amount of Blocks = 1000h, Block Length = 10000h", 13, 10, "$"
+
+; =====================================================================================================
+
+    ; Prints information about HC I/O Registers 
+    ;
+    ; FS  - contains Selector For Zero Memory
+    processEHCIHC proc near  
+
+        ; Include code for Operational Registers Displacement CalCulation 
+        
+        push ebx                    ; Save 
+        push esi                    ;
+        push eax                    ;
+        ;---------------------------;    
+        
+        ; Rests HC and Inits Registers
+        call performInitialWorkaround
+        mov ax, 10h 
+        call Int15Delay
+        ; Resets powered ports 
+        call updatePORTstate
+        mov ax, 5h 
+        call Int15Delay
+
+        ; Init Log Print Tree  
+        mov [TreeLevel], 1h 
+        
+        ; Runs Device Detour 
+        call updatePORTstateReset  
+        
+        
+        ;call prepareBulkTransfer
+        ;call getSCSIInquiryTransaction
+        ;call getSCSICapacityTransaction
+        
+        ; Capacity
+        ;call dataTransferTest4KB
+        ;call dataTransferTest20KB
+        ;call dataTransferTestHighBufferQueue
+        ;call dataTransferTestKB
+        ;call writeTransferTestKB
+        
+        ;call saveReadDataInFile
+        
+        ;call disableInterruptRegister
+        ;call returnEHCIOwnership
+
+         ; Handles User Input 
+         ;call handleUserInput
+
+         int 20h 
+
+        ;------------------------;
+        pop eax                  ;
+        pop esi                  ;
+        pop ebx                  ; Recover  
+        ret                      ; 
+
+    endp
+
+    ; (1) Takes Control of HC from BIOS 
+    ; (2) Resets HC 
+    ; (3) initializes HC with default values 
+    ;
+    performInitialWorkaround proc near
+
+        push ebx                 ; Save 
+        push eax                 ; 
+        push edi                 ;
+        push dx                  ;
+        ;------------------------;
+
+        ; Take Control Of USB HC from BIOS 
+        call retrieveLegacyInterruptsEHCI 
+        call takeEHCIOwnership     
+
+        ; Info message 
+        ;mov ah, 09               ;
+        ;lea dx, sTakeBIOSControl ; 
+        ;int 21h                  ;
+        
+        ; Resets HC to Default state
+        call performHCReset       ; 
+
+        ; Info message 
+        ;mov ah, 09               ;
+        ;lea dx, sHCResetDone     ;  
+        ;int 21h                  ;
+
+        ; Init Host Controler 
+        call initializeHC         ;
+
+        ; Info message 
+        ;mov ah, 09               ;
+        ;lea dx, sHCInitDone      ; 
+        ;int 21h                  ;
+        
+        ;-------------------------;
+        pop dx                    ;
+        pop edi                   ; 
+        pop eax                   ; 
+        pop ebx                   ; Recover 
+
+        ret                        
+
+    endp
+
+    ; Sets HC Reset bit in USB CMD to one 
+    ; Waits for HC Reset
+    ;
+    performHCReset proc near
+
+        push ebx                 ; Save 
+        push eax                 ; 
+        push ecx                 ;
+        ;------------------------;
+
+        xor eax, eax             ; 
+
+        mov ebx, HCBaseAddress   ; Base Address
+        mov ax, OperRegOff       ; Offset to Operational Registers
+        add ebx, eax             ;
+
+        mov eax, fs:[ebx]        ; USB CMD 
+        or eax, 02h              ; HC Reset Bit to One
+        mov fs:[ebx], eax        ; Resets HC 
+           
+        ; Waits for Host Controller reset  
+         
+      waitHCReset:
+
+        mov eax, fs:[ebx]        ; 
+        test eax, 02h            ; Checking if Reset is Done 
+           
+        jnz waitHCReset          ;   
+   
+        ;------------------------;
+        pop ecx                  ; 
+        pop eax                  ; 
+        pop ebx                     ; Recover 
+
+    endp
+
+    ; Perform Basic Init Actions 
+    ; Inits Interrupt Register
+    ; Inits Periodic Frame Regster 
+    ; Sets Run/Stop bit in CMD Register to ONE  
+    ; Inits Config Flag Registers  
+    ; 
+    ; 
+    initializeHC proc near
+        
+        push ebx                 ; Save 
+        push eax                 ; 
+        push ecx                 ;
+        ;------------------------;
+
+        mov ebx, HCBaseAddress   ; Takes Base Address 
+
+        ; Inits appropriate interrupts 
+        call initInterruptRegister 
+
+        ; Alloc Periodic Frame
+        ;------------------------;
+        mov eax, PeriodicFramInMem
+        mov ecx, 1024
+        mov ebx, 1               ; Set T(ermination) - bit
+
+      initPeriodicQueue:
+
+          mov fs:[eax], ebx      ; Sets 1
+          add eax, 04h           ; 4-byte pointer    
+          loop initPeriodicQueue ; 
+
+        mov ebx, HCBaseAddress   
+        xor ecx, ecx 
+        mov cx, OperRegOff
+        add ebx, ecx 
+        add ebx, PeriodLBoffset
+        mov fs:[ebx], PeriodicFramInMem
+        ;------------------------;
+        
+        
+        call initAsynchQueue     ; Allocate Memory for Asynch Queue 
+
+        call runHCinCMD          ; Sets Run Bit in USB CMD 
+        
+        ; Init Config Flag Register
+        mov eax, 01h             ; All PORT for HC 
+        sub ebx, PeriodLBoffset  ;
+        add ebx, CONFIGoffgset   ;
+        mov fs:[ebx], eax        ; 
+
+        ;------------------------;
+        pop ecx                  ; 
+        pop eax                  ; 
+        pop ebx                  ; Recover 
+
+        ret 
+
+    endp
+
+    ; Retrieves Legacy Support Registers 
+    ;
+    ; PCI Address from HCPCIAddress Variable
+    retrieveLegacyInterruptsEHCI proc near
+
+        push ebx                 ; Save 
+        push eax                 ; 
+        push edx                 ;
+        ;------------------------;
+
+        mov eax, HCPCIAddress    ; PCI Address in eax 
+
+        mov ebx, HCBaseAddress   ; 
+        add ebx, HCCPARAMSoffset ; Points on HCCPARAMS Capacity Register 
+        mov edx, fs:[ebx]        ; HCCPARAMS Register    
+        and edx, 0000FFFFh       ; Zero First Part 
+        shr edx, 8               ; Lonely EECP Value 
+
+        mov EECPvalue, dx        ; Save EECP Value 
+
+        add eax, edx             ; OUT command for USBLEGSUPReg
+         add eax, USBLEGSUPoffset; 
+         mov dx, CONFIG_ADDR     ; Sets out PORT address
+        out dx, eax              ; Sends request
+        mov dx, CONFIG_DATA      ; Sets input PORT address
+        in  eax, dx              ; Sets data from PCI device
+        mov USBLEGSUPReg, eax    ; 
+
+        mov eax, HCPCIAddress    ; PCI Address in eax 
+        xor edx, edx             ;
+        mov dx, EECPvalue        ; EECP value  
+        add eax, edx             ; OUT command for USBLEGSUPReg
+         add eax, USBLEGCTLSTSoffset
+         mov dx, CONFIG_ADDR     ; Sets out PORT address
+        out dx, eax              ; Sends request
+        mov dx, CONFIG_DATA      ; Sets input PORT address
+        in  eax, dx              ; Sets data from PCI device
+        mov USBLEGCTLSTSReg, eax ; 
+
+        ;------------------------;
+        pop edx                  ; 
+        pop eax                  ; 
+        pop ebx                  ; Recover  
+
+        ret 
+    
+    endp
+
+    ; Sets HC OS ownership bit to one 
+    ; Waits until HC BIOS ownership bit is zero 
+    ; 
+    ; 
+    takeEHCIOwnership proc near 
+        
+        push ebx                 ; Save 
+        push eax                 ; 
+        push edx                 ;
+        ;------------------------;         
+        
+        xor ebx, ebx
+
+        mov eax, HCPCIAddress    ; PCI Address
+        mov bx, EECPvalue        ; Offset from PARAMS Register
+        add eax, ebx             ; 
+
+         add eax, USBLEGSUPoffset  
+         mov dx, CONFIG_ADDR     ; Sets out PORT address
+        out dx, eax              ; Sends request
+        
+        mov dx, CONFIG_DATA      ; Sets input PORT address
+        mov eax, USBLEGSUPReg    ; Legacy Support Register
+        or eax, 01000000h        ; Sets OS Owned bit 
+        out dx, eax              ; Sets data to PCI device
+        mov USBLEGSUPReg, eax    ;
+
+          xor ebx, ebx           ; 
+
+          mov eax, HCPCIAddress  ; HC PCI Address
+          mov bx, EECPvalue      ; Value of Legacy USB Displacement 
+         add ebx, eax            ; Storage for PCI Address
+
+         ; Waits Until BIOS Owned bit is Zero 
+
+      waitBIOSOwnZero:
+     
+         mov eax, ebx            ; PCI Address 
+              
+          mov dx, CONFIG_ADDR    ; Sets out PORT address
+        out dx, eax              ; Sends request
+        mov dx, CONFIG_DATA      ; Sets input PORT address
+        in  eax, dx              ; Gets data from PCI device    
+
+        test eax, 00010000h      ;
+
+          jnz waitBIOSOwnZero         
+
+        ;------------------------;
+        pop edx                  ; 
+        pop eax                  ; 
+        pop ebx                  ; Recover  
+
+        ret 
+    
+    endp
+
+    ; Setup USB Interrupt Register
+    ;
+    initInterruptRegister proc near
+        
+        push ebx                 ; Save 
+        push eax                 ; 
+        push edx                 ;
+        ;------------------------; 
+
+        xor edx, edx             ; 
+
+        mov ebx, HCBaseAddress   ; Base Address in EBX 
+
+        mov dx, OperRegOff       ; Offset for Operational Register
+        add ebx, edx             ; 
+        add ebx, USBINToffset    ;
+
+        mov eax, fs:[ebx]        ; Gets Interrupt register 
+        or eax, 03Fh             ; Up interrupt bits for OS owned mode
+        mov fs:[ebx], eax        ; 
+
+        ;------------------------;
+        pop edx                  ; 
+        pop eax                  ; 
+        pop ebx                  ; Recover  
+
+        ret 
+
+    endp
+
+    ; Setup USB Interrupt Register
+    ;
+    disableInterruptRegister proc near
+        
+        push ebx                 ; Save 
+        push eax                 ; 
+        push edx                 ;
+        ;------------------------; 
+
+        xor edx, edx             ; 
+
+        mov ebx, HCBaseAddress   ; Base Address in EBX 
+
+        mov dx, OperRegOff       ; Offset for Operational Register
+        add ebx, edx             ; 
+        add ebx, USBINToffset    ;
+
+        xor eax, eax             ; 
+        mov fs:[ebx], eax        ; 
+
+        ;------------------------;
+        pop edx                  ; 
+        pop eax                  ; 
+        pop ebx                  ; Recover  
+
+        ret 
+
+    endp
+
+    ; Updates information about HC Ports from PORTSC Registers  
+    ; 
+    updatePORTstate proc 
+
+        push ebx                 ; Save Registers  
+        push eax                 ; 
+        push ecx                 ;
+        push edi                 ; 
+        ;------------------------;
+
+        mov ebx, HCBaseAddress   ; Base Address For HC 
+        mov edi, ebx             ; 
+        
+        add ebx, HCSPARAMSoffset ; 
+        mov ecx, fs:[ebx]        ; HCPARAMS Register in ecx 
+        and ecx, 000Fh           ; Set only N_PORTS Value 
+        
+                                 ; CX - contains number of ports
+        mov [NumberOfHCPorts], cx; Number of HC ports  
+
+        xor eax, eax             ;
+        mov ax, OperRegOff
+        add edi, eax             ; Pointer to Operational Registers
+        add edi, PORTSCoffset    ; 
+                                 ; Counter = N_PORTS
+      loopOnPORTstate:
+
+          mov eax, fs:[edi]      ; PORTSC value  ;
+          test eax, 02h          ; Test If Device State is "Changed"
+          jz testNextPORTstate
+          
+          and eax, 0FFFFFFFDh    ; Zero Change state bit 
+        mov fs:[edi], eax        ; Apply Changes 
+
+        mov eax, fs:[edi]        ; 
+        test eax, 01h            ; Test Connection State 
+        jz testNextPORTstate
+        
+        and eax, 0FFFFFFFBh      ; Zero Port Enabled Bit
+        mov fs:[edi], eax        ; Apply Changes 
+
+        or eax, 100h             ; Up Reset (8-bit)
+        mov fs:[edi], eax        ; Reset Device
+      
+      testNextPORTstate:
+
+          add edi, 04h           ; 32-bit step 
+          loop loopOnPORTstate   ; Loop 
+
+      outUpdatePORTstate:
+
+
+        ;------------------------;
+        pop edi                  ;
+        pop ecx                  ; 
+        pop eax                  ; Recover edi
+        pop ebx                  ; Recover ebx 
+
+        ret 
+    
+    endp
+
+    ; Updates information about HC Ports from PORTSC Registers  
+    ; 
+    updatePORTstateReset proc 
+
+        push ebx                 ; Save Registers  
+        push eax                 ; 
+        push ecx                 ;
+        push edi                 ; 
+        push dx                  ;
+        ;------------------------;
+
+        mov ebx, HCBaseAddress   ; Base Address For HC 
+        mov edi, ebx             ; 
+        
+        add ebx, HCSPARAMSoffset ; 
+        mov ecx, fs:[ebx]        ; HCPARAMS Register in ecx 
+        and ecx, 000Fh           ; Set only N_PORTS Value 
+        
+                                 ; CX - contains number of ports 
+
+        xor eax, eax             ;
+        mov ax, OperRegOff
+        add edi, eax             ; Pointer to Operational Registers
+        add edi, PORTSCoffset    ; 
+                                 ; Counter = N_PORTS
+      loopOnPORTstateReset:
+
+          mov eax, fs:[edi]      ; PORTSC value  ;
+                                 ; Terminating Reset Sequence
+        and eax, 0FFFFFEFFh      ; (Fix 8-bit)
+        mov fs:[edi], eax        ; Apply Changes
+
+        mov eax, fs:[edi]        ;
+        test eax, 1h             ;
+        jz nextLoopOnPORTstateReset
+        
+        ;------------------------;
+        
+        ;call printFormatStepRM
+
+        ;***
+        ;lea dx, sRootHubPort 
+        ;mov ah, 09h 
+        ;int 21h
+
+        call processUSBDevice 
+        
+        ;------------------------;
+                     
+      nextLoopOnPORTstateReset:
+
+          add edi, 04h           ; 32-bit step 
+
+          loop loopOnPORTstateReset; Loop 
+
+        ;------------------------;
+        pop dx                   ; 
+        pop edi                  ;
+        pop ecx                  ; 
+        pop eax                  ; Recover edi
+        pop ebx                  ; Recover ebx 
+
+        ret 
+    
+    endp
+
+    ; MAIN procedure for Device Initialization, Enumeration, Configuration
+    ; Processes USB Hubs 
+    ;
+    processUSBDevice proc near 
+
+        push esi                 ;
+        push eax                 ;
+        ;------------------------;
+        
+        ; Zero Transfer Structures Parameters 
+        call initTransferStrucutresParametes 
+        ; GET_DESCRIPTOR (Device)
+        call getDeviceDescTransaction
+        ; Set Device Address
+        call setDeviceAddrTransaction
+        ; Get Configuration Descriptor 
+        call getConfigDescTransaction
+        ; Set Device Configuration
+        call setDeviceConfigTransaction
+        
+        ; HUB testing 
+        cmp [DDbDeviceClass], 09h
+        jnz OutProcessUSBDevice
+        
+        ;GET_DESCRIPTOR (hub)
+        call getHubDescTransaction
+        call setPowerHubPortsTransaction
+        ; For Print Style
+        inc [TreeLevel]
+        ; Enables Hub Ports 
+        call enableHubPortsTransaction
+        
+        jmp OutProcessUSBHubDevice
+
+      OutProcessUSBDevice:
+        
+        ; Get String Descriptor
+        ;call printFormatStepRM
+        ;call getStringDescTransaction
+    
+      OutProcessUSBHubDevice:
+
+        ;------------------------;
+        pop eax                  ; 
+        pop esi                  ; Recover 
+
+        ret 
+    
+    endp
+
+    ; Performs GET_DESCRIPTOR (Device) transaction 
+    ; Prints main fields (High-Speed Devices) 
+    ;
+    getDeviceDescTransaction proc near 
+        
+        push esi                 ;
+        push eax                 ;
+        push dx                  ;  
+        ;------------------------;
+
+        ;mov ah, 09h              
+        ;lea dx, sDeviceDescriptorMsg
+        ;int 21h
+
+        ; Transaction
+        lea esi, GetDeviceDescReq8
+        call performAQSetupTransaction
+        call performAQInTransaction
+        mov esi, [LinearWriteBufferAddress]
+        call retrieveDeviceDescriptor
+        
+        ; Update Max Packet Size 
+        call updateEndpointParamInQH
+
+        ; Transaction
+        lea esi, GetDeviceDescReq18
+        call performAQSetupTransaction
+        call performAQInTransaction
+
+        mov esi, [LinearWriteBufferAddress]
+        call retrieveDeviceDescriptor
+        
+        ; Prints Result 
+        ;call printDeviceDescriptor
+
+        ; HUB testing 
+        cmp [DDbDeviceClass], 09h
+        jnz highSpeedDeiceMsgPrint
+
+
+        ;-------------------------------;
+        ; Tracing Code                  ; 
+        
+        ; ***
+        ;mov ah, 09h 
+        ;lea dx, sHighSpeedHub
+        ;int 21h
+        
+        jmp outGetDeviceDescTransaction
+
+      highSpeedDeiceMsgPrint:     
+        
+        ;***
+        ;mov ah, 09h 
+        ;lea dx, sHighSpeedDeice
+        ;int 21h  
+          
+        ; Tracing Code                  
+        ;------------------------;
+        
+      outGetDeviceDescTransaction:
+        
+        ;------------------------;
+        pop dx                   ; 
+        pop eax                  ; 
+        pop esi                  ; Recover 
+
+        ret 
+    
+    endp
+    
+    ; Performs SET_ADDRESS (Device) transaction 
+    ; 
+    ;
+    setDeviceAddrTransaction proc near 
+        
+        push esi                 ; 
+        push eax                 ;
+        push dx                  ;
+        ;------------------------;
+        
+        ;mov ah, 09h              
+        ;lea dx, sDeviceEnumerationMsg
+        ;int 21h 
+
+        ; Increments Device Address
+        inc [SetDeviceAddrReq + 2]
+        lea esi, SetDeviceAddrReq
+        call performAQSetupTransaction
+
+        ; Get Zero IN Packet
+        call performAQInTransaction
+
+        xor ax, ax 
+        mov ax, word ptr [SetDeviceAddrReq + 2] ; Remember updated Device Address
+        mov [ValidDeviceAddress], al            ; Saves Valid Device Address  
+        
+        ;----------------------;
+        ; Log Print            ; 
+        
+        ;***
+        ;mov ah, 09h
+        ;lea dx, sHSDeviceAddr
+        ;int 21h
+        mov ax, word ptr [SetDeviceAddrReq + 2]
+        ;push ax 
+        ;call printByteFromStackRM
+
+        ; HUB testing 
+        cmp [DDbDeviceClass], 09h
+        jz outSetDeviceAddrTransaction
+        ;call printNewLineRM 
+      
+      outSetDeviceAddrTransaction:
+    
+        ;------------------------;
+        pop dx                   ; 
+        pop eax                  ; 
+        pop esi                  ; Recover 
+
+        ret 
+    
+    endp
+
+    ; Performs SET_CONFIGURATION (Device) transaction 
+    ; 
+    ;
+    setDeviceConfigTransaction proc near 
+        
+        push esi                 ; 
+        push eax                 ;
+        push dx                  ;
+        ;------------------------;
+        
+        ;mov ah, 09h              
+        ;lea dx, sSetDeviceConfigMsg
+        ;int 21h 
+
+        ; Setup token 
+        xor dx, dx 
+        mov dl, [CDbConfigValue] ; Gets Configuration Value from Configuration Descriptor 
+        lea esi, SetConfigReq
+        mov [esi + 2], dx        ; wValue lower byte is bConfiguration
+        call performAQSetupTransaction
+
+        ; Get Zero IN Packet
+        call performAQInTransaction
+
+        ;------------------------;
+        pop dx                   ; 
+        pop eax                  ; 
+        pop esi                  ; Recover 
+
+        ret 
+    
+    endp
+
+    ; Performs GET_CONFIGURATION (Device) transaction 
+    ; Prints main fields 
+    ;
+    getDeviceConfigTransaction proc near 
+        
+        push esi                 ;
+        push eax                 ;
+        push dx                  ; 
+        ;------------------------;
+
+        ;mov ah, 09h              
+        ;lea dx, sDeviceConfigMsg
+        ;int 21h 
+
+        ; Setup Transaction
+        lea esi, GetConfigReq
+        call performAQSetupTransaction
+        ; In Transaction
+        call performAQInTransaction
+        ; Dump To For Checking 
+        call printOutBufferDump
+
+        ;------------------------;
+        pop dx                   ; 
+        pop eax                  ; 
+        pop esi                  ; Recover 
+
+        ret 
+    
+    endp
+
+    ; Performs GET_CONFIGURATION_DESCRIPTOR transaction 
+    ; Prints main fields 
+    ;
+    getConfigDescTransaction proc near 
+        
+        push esi                 ;
+        push eax                 ;
+        push dx                  ; 
+        ;------------------------;
+
+        ;mov ah, 09h              
+        ;lea dx, sConfigDescMsg    
+        ;int 21h 
+        
+        ; Get Only Configuration Descriptor
+        lea esi, GetConfigDescReq
+        call performAQSetupTransaction
+        call performAQInTransaction
+        ; Process Result 
+        mov esi, [LinearWriteBufferAddress]
+        call retrieveConfigDescriptorSmall
+
+        ; Get Full Configuration & Interface & Endpoint Descriptors 
+        lea esi, GetConfigDescReq64
+        mov dx, [CDwTotalLength]
+        mov [esi + wLengthOffset], dx  
+        call performAQSetupTransaction
+        call performAQInTransaction
+        
+        ; Process Result 
+        mov esi, [LinearWriteBufferAddress]
+        call retrieveConfigDescriptorFull
+
+        ;------------------------;
+        pop dx                   ; 
+        pop eax                  ; 
+        pop esi                  ; Recover 
+
+        ret 
+    
+    endp
+
+    ; Performs GET_DESCRIPTOR (HUB) transaction 
+    ; Prints main fields 
+    ;
+    getHubDescTransaction proc near 
+        
+        push esi                 ;
+        push eax                 ;
+        push dx                  ; 
+        ;------------------------;
+
+        ;mov ah, 09h              
+        ;lea dx, sHubDescriptorMsg
+        ;int 21h 
+
+        ; Setup Transaction
+        lea esi, GetHubDescReq
+        call performAQSetupTransaction
+
+        ; In Transaction
+        call performAQInTransaction
+
+        ; Prints Result 
+        mov esi, [LinearWriteBufferAddress]
+        call retrieveHubDescriptor
+        
+        ;------------------------;
+        pop dx                   ; 
+        pop eax                  ; 
+        pop esi                  ; Recover 
+
+        ret 
+    
+    endp
+    
+    ; Performs GET_PORT_STATUS transaction 
+    ; Prints main fields 
+    ;
+    getPortStatusTransaction proc near
+
+        push esi                 ;
+        ;------------------------; 
+
+        ; Get Status 
+        lea esi, GetPortStatusReq
+        call performAQSetupTransaction    
+        call performAQInTransaction
+        
+        ;------------------------;
+        pop esi                  ; Recover 
+
+        ret
+
+    endp
+
+    ; Performs SET_PORT_FEATURE transaction with PORT_POWER parameter 
+    ; Prints main fields 
+    ;
+    setPowerHubPortsTransaction proc near
+
+        push esi                 ;
+        push eax                 ;
+        push dx                  ; 
+        push cx                  ; 
+        ;------------------------; 
+
+        mov cl, byte ptr [HDbNbrPorts]
+
+        ; Setting Default Port 
+        mov word ptr [SetPortFeatureReq + 4], 0h
+
+        ;mov ah, 09h
+        ;lea dx, sPortPowerOnMsg
+        ;int 21h 
+
+      setPowerOverPortOnHub:
+
+        ; Update Port number
+        mov dx, word ptr [SetPortFeatureReq + 4]
+        inc dx 
+        mov word ptr [SetPortFeatureReq + 4], dx 
+
+        ; Set Feature 
+        mov dx, featurePORT_POWER
+        mov word ptr [SetPortFeatureReq + 2], dx 
+
+        ; Setup Transaction
+        lea esi, SetPortFeatureReq
+        call performAQSetupTransaction        
+        
+        ; In Transaction
+        call performAQInTransaction
+
+          loop setPowerOverPortOnHub
+
+        ;------------------------;
+        pop cx                   ; 
+        pop dx                   ; 
+        pop eax                  ; 
+        pop esi                  ; Recover 
+
+        ret
+
+    endp
+
+    ; Performs port enabling: 
+    ; 
+    ; Clears C_PORT_CONNECTION feature 
+    ; Sets PORT_RESET feature 
+    ; Clears C_PORT_RESET feature
+    ; 
+    enableHubPortsTransaction proc near
+
+        push esi                 ;
+        push eax                 ;
+        push edx                 ; 
+        push cx                  ; 
+        push bx                  ; 
+        ;------------------------; 
+
+        xor cx, cx               ;
+        mov cl, byte ptr [HDbNbrPorts]
+        
+        ; Setting Default Port 
+        mov word ptr [SetPortFeatureReq + 4], 0h
+        ; Setting Default Port 
+        mov word ptr [GetPortStatusReq + 4], 0h
+        ; Setting Default Port 
+        mov word ptr [ClearPortFeatureReq + 4], 0h
+        ; Connected Device Amount 
+        mov word ptr [ConncetedUSBDeviceAmount], 0h 
+
+        ;mov ah, 09h
+        ;lea dx, sPortEnableMsg
+        ;int 21h 
+
+      enableHubPortsOnHub:
+
+        ; Update Port number
+        mov dx, word ptr [GetPortStatusReq + 4]
+        inc dx 
+        mov word ptr [GetPortStatusReq + 4], dx
+
+        ;------------------------------------------;
+        ; Prints Port  
+        ;***
+        ;push dx 
+        ;call printFormatStepRM
+        ;mov ah, 09h
+        ;lea dx, sHubPort
+        ;int 21h
+        ;call printByteFromStackRM
+        ;call printSpaceRM
+        
+        ; Gets Port Status 
+        call getPortStatusTransaction
+        mov edx, dword ptr [LinearWriteBufferAddress]
+        mov eax, fs:[edx]
+       
+        ; C_PORT_CONNECTION bit = 16-bit ([0] bit in wPortChange word)
+        test eax, 00010000h
+        jz informAboutEmptyPort
+
+        ; Update Port number
+        mov dx, word ptr [GetPortStatusReq + 4]
+        mov word ptr [SetPortFeatureReq + 4], dx
+        mov word ptr [ClearPortFeatureReq + 4], dx  
+
+        ;------------------------------------------;
+        ; CLEAR_FEATURE (C_PORT_CONNECTION)
+        
+        mov word ptr [ClearPortFeatureReq + 2], featureC_PORT_CONNECT 
+        ; Transaction
+        lea esi, ClearPortFeatureReq
+        call performAQSetupTransaction
+        call performAQInTransaction
+
+        ;------------------------------------------;
+        ; SET_FEATURE (PORT_RESET)
+        
+        mov word ptr [SetPortFeatureReq + 2], featurePORT_RESET 
+
+        lea esi, SetPortFeatureReq
+        call performAQSetupTransaction
+
+        ; In Transaction
+        call performAQInTransaction
+
+        ;------------------------------------------;
+        ; CLEAR_FEATURE (С_PORT_RESET)
+        
+        mov word ptr [ClearPortFeatureReq + 2], featureC_PORT_RESET 
+
+        ; Setup Transaction
+        lea esi, ClearPortFeatureReq
+        call performAQSetupTransaction
+        call performAQInTransaction
+        
+        ;------------------------------------------;
+
+        call retrieveUSBDeviceTypeAndProcess
+
+        inc [ConncetedUSBDeviceAmount]
+        jmp enableNextHubPort
+        ;------------------------------------------;
+
+      informAboutEmptyPort:
+
+        ; Info About Empty Port 
+        ;***
+        ;mov ah, 09h
+        ;lea dx, sDisconnectedPort 
+        ;int 21h 
+
+      enableNextHubPort:
+ 
+          loop enableHubPortsOnHub
+
+          ;------------------------------------------;
+        ; Log info 
+          
+          ;mov ah, 09h
+          ;lea dx, sConnectedDevNumMsg
+          ;int 21h 
+          ;mov ax, [ConncetedUSBDeviceAmount]
+        ;push ax 
+        ;call printWordFromStackRM
+        ;call printNewLineRM
+
+        ;------------------------;
+        pop bx                   ;
+        pop cx                   ; 
+        pop edx                  ; 
+        pop eax                  ; 
+        pop esi                  ; Recover 
+
+        ret
+
+    endp  
+    
+    ; Retrieves UBS Device Type 
+    ; Process High Speed USB device (Skip other)
+    ;
+    retrieveUSBDeviceTypeAndProcess proc near
+
+        push eax                 ;
+        push edx                 ; 
+        ;------------------------; 
+        
+        ; Gets Port Status 
+        call getPortStatusTransaction
+        mov edx, dword ptr [LinearWriteBufferAddress]
+        mov eax, fs:[edx]
+
+        ; LOW_SPEED Device Connected (Skip processing) 
+        test eax, 00000200h      ; 9-th bit is LOW_SPEED indicator
+        jnz lowSpeedDeviceOnPort    
+
+        ; Saves Valid Hub Address
+        mov dl, [ValidDeviceAddress]
+        
+        ; Handle Connected USB Device 
+        call processUSBDevice
+
+        ; Recover Valid Hub Address
+        mov [ValidDeviceAddress], dl
+
+        jmp outRetrieveUSBDeviceTypeAndProcess
+
+        ;------------------------------------------;
+      
+      lowSpeedDeviceOnPort:
+          
+          ; ***
+          ;mov ah, 09h
+          ;lea dx, sLowSpeedDevice
+          ;int 21h
+
+        ;------------------------------------------;
+    
+    outRetrieveUSBDeviceTypeAndProcess:
+    
+        ;------------------------; 
+        pop edx                  ; 
+        pop eax                  ; 
+        
+        ret
+
+    endp 
+
+    ; Updates Endpoint Characteristics (Max Packet Size) 
+    ;
+    updateEndpointParamInQH proc near
+
+        push ebx                 ; Save Registers  
+        push eax                 ; 
+        ;------------------------;
+
+        mov eax, [QHEndpointParam]
+        and eax, 0F800FFFFh      ; Clear bits [26:16] 
+
+        xor ebx, ebx             ;
+        mov bl,[DDbMaxPacketSize]; Gets updated Max Packet Length 
+        shl ebx, 16              ; Shifts MaxPacketSize 
+
+        add eax, ebx             ; Update QHEndpoint Characteristics Value
+        mov [QHEndpointParam], eax 
+
+        ;------------------------;
+        pop eax                  ; 
+        pop ebx                  ; 
+
+        ret 
+
+    endp
+
+    ; Performs GET_HUB_STATUS transaction 
+    ; Prints main fields 
+    ; 
+    getHubStatusTransaction proc near
+
+        push esi                 ;
+        push eax                 ;
+        push dx                  ; 
+        ;------------------------;
+
+        ;mov ah, 09h              
+        ;lea dx, sHubStatusMsg
+        ;int 21h 
+
+        ; Setup Transaction
+        lea esi, GetHubStatusReq
+        call performAQSetupTransaction
+
+        ; In Transaction
+        call performAQInTransaction
+
+        ;------------------------;
+        pop dx                   ; 
+        pop eax                  ; 
+        pop esi                  ; Recover 
+
+        ret
+
+    endp
+
+    ; Performs GET_DESCRIPTOR (String) transaction 
+    ; Prints String Result
+    ; 
+    getStringDescTransaction proc near
+
+        push esi                 ;
+        push eax                 ;
+        push dx                  ;
+        push cx                  ;
+        ;------------------------;
+
+        ;mov ah, 09h              
+        ;lea dx, sStringDescriptorMsg
+        ;int 21h 
+        
+        mov cx, 16               ; Cleaning Parameter
+        call emptyOutWriteBuffer
+        
+        ; Setup Transaction
+        lea esi, GetStrDescReq64
+        ; Checking possible language 
+        call performAQSetupTransaction
+        ; In Transaction
+        call performAQInTransaction
+        ; Print Description
+        mov esi, [LinearWriteBufferAddress]
+        call printStringDescriptor
+
+        ;------------------------;
+        pop cx                   ;
+        pop dx                   ; 
+        pop eax                  ; 
+        pop esi                  ; Recover 
+
+        ret
+
+    endp
+
+    ; Init field which are used in QH and qTDs with default values
+    ; 
+    initTransferStrucutresParametes proc near
+
+        push ebx                 ; Save Registers  
+        ;------------------------; 
+
+        xor ebx, ebx             ; 
+
+        mov [ValidDeviceAddress], bl 
+        mov [ValidEndpoint], bl 
+        mov [InBytes], bx
+        mov [QHEndpointParam], QHEndpointHighSpeed
+
+        ;------------------------;
+        pop ebx                  ; 
+
+        ret 
+
+    endp
+
+    ; Clears Write Buffer 
+    ;
+    ; CX - contains amount of 4-bytes 
+    emptyOutWriteBuffer proc near
+
+        push ebx
+        push eax
+        push cx 
+        ;------------------------;
+
+        mov ebx, [LinearWriteBufferAddress]
+        xor eax, eax  
+
+      emptyOutWriteBufferloop:
+
+        mov fs:[ebx], eax 
+        add ebx, 4
+        
+        loop emptyOutWriteBufferloop
+        
+        ;------------------------;
+        pop cx 
+        pop eax 
+        pop ebx 
+
+        ret 
+
+    endp
+
+    ; Handle User Input 
+    ;
+    ; 
+    prepareBulkTransfer proc near
+
+        push bx 
+        push esi
+        ;------------------------;
+
+        mov [ValidDeviceAddress], 02h 
+        mov [ValidEndpoint], ZeroEndpoint 
+
+
+        ; Reset Mass Storage Device 
+        lea esi, MassStorageResetReq
+        call performAQSetupTransaction
+        call performAQInTransaction
+        
+        xor bx, bx 
+        mov bl, [EDInEndpointAddress] 
+        ; CLEAR_FEATURE ENDPOINT_HALT 
+        lea esi, ClearEndpointHaltReq
+        ; Set OUT (01h) Endpoint info 
+        mov word ptr [ClearEndpointHaltReq + wIndexOffset], bx 
+        call performAQSetupTransaction
+        call performAQInTransaction
+        
+        xor bx, bx 
+        mov bl, [EDOutEndpointAddress] 
+        ; CLEAR_FEATURE ENDPOINT_HALT 
+        lea esi, ClearEndpointHaltReq
+        ;Set IN (02h) Endpoint info 
+        mov word ptr [ClearEndpointHaltReq + wIndexOffset], bx
+        call performAQSetupTransaction
+        call performAQInTransaction
+
+        ; Get MAX LUN Transaction
+        lea esi, GetMaxLunReq
+        call performAQSetupTransaction
+        call performAQInTransaction    
+
+        ;------------------------;
+        pop esi 
+        pop bx 
+
+        ret 
+
+    endp
+
+    ; Sets HC BIOS ownership bit to one 
+    ; Waits until HC OS ownership bit is zero 
+    ; 
+    ; 
+    returnEHCIOwnership proc near 
+        
+        push ebx                 ; Save 
+        push eax                 ; 
+        push edx                 ;
+        ;------------------------;         
+        
+        xor ebx, ebx
+
+        mov eax, HCPCIAddress    ; PCI Address
+        mov bx, EECPvalue        ; Offset from PARAMS Register
+        add eax, ebx             ; 
+
+         add eax, USBLEGSUPoffset  
+         mov dx, CONFIG_ADDR     ; Sets out PORT address
+        out dx, eax              ; Sends request
+        
+        mov dx, CONFIG_DATA      ; Sets input PORT address
+        mov eax, USBLEGSUPReg    ; Legacy Support Register
+        or eax, 00010000h        ; Sets BIOS Owned bit 
+        and eax, 0FEFFFFFFh      ;
+        out dx, eax              ; Sets data to PCI device
+        mov USBLEGSUPReg, eax    ;
+
+        mov eax, HCPCIAddress    ; PCI Address
+        mov bx, EECPvalue        ; Offset from PARAMS Register
+        add eax, ebx             ; 
+
+         add eax, USBLEGCTLSTSoffset 
+         mov dx, CONFIG_ADDR     ; Sets out PORT address
+        out dx, eax              ; Sends request
+        
+        mov dx, CONFIG_DATA      ; Sets input PORT address
+        mov eax, USBLEGCTLSTSReg ; 
+        out dx, eax              ; Sets data to PCI device
+        mov USBLEGSUPReg, eax    ;
+
+        ;------------------------;
+        pop edx                  ; 
+        pop eax                  ; 
+        pop ebx                  ; Recover  
+
+        ret 
+    
+    endp
+
+    ; Performs SCSI Inquiry transaction 
+    ; Prints Result
+    ; 
+    getSCSIInquiryTransaction proc near
+
+        push esi                 ;
+        push eax                 ;
+        push dx                  ;
+        push cx                  ;
+        ;------------------------;
+
+        mov cx, 16
+        call emptyOutWriteBuffer
+
+        ;------------------------;
+        ; Inquiry Bulk OUT (CBW)
+
+        lea esi, InquiryBulkRequest
+        mov [ValidDeviceAddress], 02h 
+        call performAQBulkOutTransaction
+        
+        ;------------------------;
+        ; Inquiry Bulk IN (Result)
+        
+        mov [ValidDeviceAddress], 02h 
+        mov [InBytes], 24h
+        call performAQBulkInTransaction
+
+        ; Print Result 
+        mov esi, [LinearWriteBufferAddress]
+        ; Displacement for output 
+        add esi, 4 
+        call printStringDescriptor
+
+        ;------------------------;        
+        ; Get CSW 
+        mov [ValidDeviceAddress], 02h 
+        mov [InBytes], 13
+        call performAQBulkInTransaction
+        
+        ;------------------------;
+        pop cx                   ;
+        pop dx                   ; 
+        pop eax                  ; 
+        pop esi                  ; 
+
+        ret
+
+    endp
+
+    ; Performs SCSI Capacity transaction 
+    ; Prints String Result
+    ; 
+    getSCSICapacityTransaction proc near
+
+        push esi                 ;
+        push eax                 ;
+        push edx                 ;
+        push cx                  ;
+        ;------------------------;
+
+        mov cx, 16
+        call emptyOutWriteBuffer
+        
+        ;------------------------;
+        ; Inquiry Bulk OUT (CBW)
+
+        lea esi, ReadCapacityRequest
+        mov [ValidDeviceAddress], 02h 
+        call performAQBulkOutTransaction
+        
+        ;------------------------;
+        ; Inquiry Bulk IN (Result)
+        
+        mov [ValidDeviceAddress], 02h 
+        mov [InBytes], 8h
+        call performAQBulkInTransaction
+
+        ; Save Capacity Parameters 
+        mov eax, [LinearWriteBufferAddress]
+        mov ebx, fs:[eax]
+        bswap ebx 
+        mov [MSLogicalBlockAddress], ebx 
+        
+        mov eax, [LinearWriteBufferAddress + 4]
+        mov ebx, fs:[eax]
+        bswap ebx 
+        mov [MSBlockLength], ebx 
+
+        ;------------------------;        
+        ; Get CSW 
+        
+        mov [ValidDeviceAddress], 02h 
+        mov [InBytes], 13
+        call performAQBulkInTransaction
+
+        ;------------------------;        
+        ; Get CSW 
+        
+        mov ebx, [MSBlockLength]
+        push bx 
+        shr ebx, 16
+        push bx 
+        call printWordFromStackRM
+        call printWordFromStackRM
+        call printNewLineRM
+
+        ;------------------------;
+        pop cx                   ;
+        pop edx                  ; 
+        pop eax                  ; 
+        pop esi                  ; 
+
+        ret
+
+    endp
+
+    ; Performs SCSI Read10 transaction 
+    ; 
+    getSCSIRead10Transaction proc near
+
+        push eax                 ;
+        push cx                  ;
+        ;------------------------;
+        
+        ; Bulk Data IN Parameters 
+        mov [InBytes], 800h 
+        mov al, [EDInEndpointAddress]
+        and ax, 0Fh 
+        mov [ValidEndpoint], al 
+        mov [QHEndpointParam], 02006000h        
+        
+        ; 1MB
+        mov cx, 205
+      
+      readTransferQueue:
+
+        call createQueueHead
+        call createBulkInQTD
+        call runAQueueinCMD
+        call detectStateChange
+        call stopAQueueinCMD
+        call printQTDStatus
+        
+        ; Toggle bit Check 
+        mov eax, [BulkInQTDToken]
+        xor eax, 80000000h
+        mov [BulkInQTDToken], eax 
+
+        mov eax, [LinearBulkWriteBufferAddress]
+        add eax, 800h
+        mov [LinearBulkWriteBufferAddress], eax 
+        
+        loop readTransferQueue        
+        
+        
+        ;------------------------;
+        pop cx                   ;
+        pop eax                  ; 
+
+        ret
+
+    endp
+
+    ; Performs SCSI Read10 transaction 
+    ; 
+    dataTransferTest proc near
+
+        push edx                 ;
+        push eax                 ;
+        push esi                 ; 
+        push cx                  ;
+        ;------------------------;
+        
+        mov [ValidDeviceAddress], 02h 
+        mov [LinearBulkWriteBufferAddress], 80000000h
+        
+        ; READ10 Pointer 
+        lea esi, Read10Request
+        ; Sectors for Transfer
+        mov cx, 1
+        mov byte ptr [Read10Request + 22], ch
+        mov byte ptr [Read10Request + 23], cl
+        ; READ10 Request Length
+        mov eax, 80000h
+        mov dword ptr [Read10Request + 8], eax
+          
+          xor edx, edx 
+        mov cx, 500
+
+      readDataFromMassStorageDevice:      
+        
+        bswap edx 
+        mov dword ptr [Read10Request + 17], edx
+        
+        mov al, [EDOutEndpointAddress] 
+        mov [ValidEndpoint], al
+        mov [QHEndpointParam], 02006000h
+        
+        call createQueueHead
+        call createBulkOutQTD
+        call runAQueueinCMD
+        call detectStateChange
+        call stopAQueueinCMD
+        call printQTDStatus
+        
+        mov eax, [BulkOutQTDToken]
+        xor eax, 80000000h
+        mov [BulkOutQTDToken], eax 
+        call getSCSIRead10Transaction
+
+        loop readDataFromMassStorageDevice
+        
+        mov edx, 80000000h
+        mov eax, fs:[edx]
+        push ax 
+        shr eax, 16
+        push ax 
+        call printWordFromStackRM
+        call printWordFromStackRM
+        call printNewLineRM
+
+        mov eax, [LinearBulkWriteBufferAddress]
+        push ax 
+        shr eax, 16
+        push ax 
+        call printWordFromStackRM
+        call printWordFromStackRM
+        call printNewLineRM
+        
+        ;------------------------;
+        pop cx                   ;
+        pop esi                  ;
+        pop eax                  ;
+        pop edx                  ; 
+
+        ret
+
+    endp
+
+    ; Performs SCSI Read10 transaction 
+    ; 
+    dataTransferTest4KB proc near
+
+        push edi                 ; 
+        push edx                 ;
+        push eax                 ;
+        push esi                 ; 
+        push cx                  ;
+        ;------------------------;
+        
+        mov [ValidDeviceAddress], 02h 
+        mov eax, [LinearWriteBufferAddress]
+        mov [LinearBulkWriteBufferAddress], eax 
+        mov [LinearBulkWriteBufferAddress], 80000000h
+        
+        ; READ10 Pointer 
+        lea esi, Read10Request
+        ; Sectors for Transfer
+        mov cx, 8
+        mov byte ptr [Read10Request + 22], ch
+        mov byte ptr [Read10Request + 23], cl
+        ; READ10 Request Length
+        mov eax, 1000h
+        mov dword ptr [Read10Request + 8], eax
+        
+        xor edi, edi 
+        xor edx, edx  
+        mov cx, 0F000h 
+
+      readDataFromMassStorageDevice4KB:      
+        
+        bswap edx 
+        mov dword ptr [Read10Request + 17], edx
+        
+        mov al, [EDOutEndpointAddress] 
+        mov [ValidEndpoint], al
+        mov [QHEndpointParam], 02006000h
+        
+        call createQueueHead
+        call createBulkOutQTD
+        call runAQueueinCMD
+        call detectStateChange
+        call stopAQueueinCMD
+        ;call printQTDStatus
+
+        mov eax, [BulkOutQTDToken]
+        xor eax, 80000000h
+        mov [BulkOutQTDToken], eax 
+        call getSCSIRead10Transaction4KB
+
+        bswap edx
+        add edx, 8     
+
+        loop readDataFromMassStorageDevice4KB
+            
+        mov eax, [LinearBulkWriteBufferAddress]
+        sub eax, 1000h        
+        push ax 
+        shr eax, 16
+        push ax 
+        call printWordFromStackRM
+        call printWordFromStackRM
+        call printSpaceRM
+
+        mov edx, [LinearBulkWriteBufferAddress]
+        mov edx, 80200180h
+        mov [LinearBulkWriteBufferAddress], edx
+
+        call printTDArrayDump
+
+        ;call printOutBufferDump
+        
+        ;------------------------;
+        pop cx                   ;
+        pop esi                  ;
+        pop eax                  ;
+        pop edx                  ; 
+        pop edi                  ;
+
+        ret
+
+    endp
+
+    ; Performs SCSI Read10 4KB transaction 
+    ; 
+    getSCSIRead10Transaction4KB proc near
+
+        push eax                 ;
+        push ebx                 ;
+        ;------------------------;
+        
+        ; Bulk Data IN 100Dh 
+        mov [InBytes], 100Dh 
+        mov al, [EDInEndpointAddress]
+        and ax, 0Fh 
+        mov [ValidEndpoint], al 
+        mov [QHEndpointParam], 02006000h        
+        
+        call createQueueHead
+        call createBulkInQTD
+        call runAQueueinCMD
+        call detectStateChange
+        call stopAQueueinCMD
+        call printQTDStatus
+        
+        ; Toggle bit Check 
+        mov eax, [BulkInQTDToken]
+        xor eax, 80000000h
+        mov [BulkInQTDToken], eax 
+
+        mov eax, [LinearBulkWriteBufferAddress]
+        ; Saves First Byte for Revision 
+        ;mov bl, fs:[eax]
+        add eax, 1000h
+        mov [LinearBulkWriteBufferAddress], eax 
+        ;mov eax, [LinearWriteBufferAddress]
+        ;add eax, edi 
+        ;mov fs:[eax], bl
+        ;inc edi     
+        ; Bulk Data IN Dh 
+        ;mov [InBytes], 0Dh 
+        ;call createQueueHead
+        ;call createBulkInQTD
+        ;call runAQueueinCMD
+        ;call detectStateChange
+        ;call stopAQueueinCMD
+        ;call printQTDStatus
+        
+        ; Toggle Bit Check 
+        ;mov eax, [BulkInQTDToken]
+        ;xor eax, 80000000h
+        ;mov [BulkInQTDToken], eax 
+        
+        ;mov eax, [LinearBulkWriteBufferAddress]
+        ;add eax, 80Dh
+        ;mov [LinearBulkWriteBufferAddress], eax 
+        
+        ;------------------------;
+        pop ebx                  ; 
+        pop eax                  ; 
+
+        ret
+
+    endp
+
+    ; Performs SCSI Read10 transaction 
+    ; 
+    dataTransferTest20KB proc near
+
+        push edi                 ; 
+        push edx                 ;
+        push eax                 ;
+        push esi                 ; 
+        push cx                  ;
+        ;------------------------;
+        
+        mov [ValidDeviceAddress], 02h 
+        mov eax, [LinearWriteBufferAddress]
+        mov [LinearBulkWriteBufferAddress], eax 
+        mov [LinearBulkWriteBufferAddress], 80000000h
+        ; READ10 Pointer 
+        lea esi, Read10Request
+        
+        call printTDArrayDump
+        
+        ; Sectors for Transfer
+        mov cx, 40
+        mov byte ptr [Read10Request + 22], ch
+        mov byte ptr [Read10Request + 23], cl
+        
+        ; READ10 Request Length
+        mov eax, 5000h
+        mov dword ptr [Read10Request + 8], eax
+        
+        xor edi, edi 
+        xor edx, edx  
+        mov cx, 3334h 
+
+      readDataFromMassStorageDevice20KB:      
+        
+        bswap edx 
+        mov dword ptr [Read10Request + 17], edx
+        
+        mov al, [EDOutEndpointAddress] 
+        mov [ValidEndpoint], al
+        mov [QHEndpointParam], 02006000h
+        
+        call createQueueHead
+        call createBulkOutQTD
+        call runAQueueinCMD
+        call detectStateChange
+        call stopAQueueinCMD
+        ;call printQTDStatus
+
+        mov eax, [BulkOutQTDToken]
+        xor eax, 80000000h
+        mov [BulkOutQTDToken], eax 
+        call getSCSIRead10Transaction20KB
+
+        bswap edx
+        add edx, 40     
+
+        loop readDataFromMassStorageDevice20KB
+        
+        call printTDArrayDump
+        
+        
+        ;------------------------;
+        pop cx                   ;
+        pop esi                  ;
+        pop eax                  ;
+        pop edx                  ; 
+        pop edi                  ;
+
+        ret
+
+    endp
+
+    ; Performs SCSI Read10 20KB transaction 
+    ; 
+    getSCSIRead10Transaction20KB proc near
+
+        push eax                 ;
+        push ebx                 ;
+        ;------------------------;
+        
+        ; Bulk Data IN 5000h 
+        mov [InBytes], 5000h 
+        mov al, [EDInEndpointAddress]
+        and ax, 0Fh 
+        mov [ValidEndpoint], al 
+        mov [QHEndpointParam], 02006000h        
+        
+        call createQueueHead
+        call createBulkInQTDWithExtendedBuffer
+        call runAQueueinCMD
+        call detectStateChangeControl
+        call stopAQueueinCMD
+        
+        ; Toggle bit Check 
+        mov eax, [BulkInQTDTokenExtBuffer]
+        xor eax, 80000000h
+        mov [BulkInQTDTokenExtBuffer], eax 
+
+        ; Bulk Data IN 0Dh 
+        mov [InBytes], 0Dh 
+        call createQueueHead
+        call createBulkInQTD
+        call runAQueueinCMD
+        call detectStateChangeControl
+        call stopAQueueinCMD
+        call printQTDStatus
+
+        ; Toggle bit Check 
+        mov eax, [BulkInQTDToken]
+        xor eax, 80000000h
+        mov [BulkInQTDToken], eax 
+
+        ;------------------------;
+        pop ebx                  ; 
+        pop eax                  ; 
+
+        ret
+
+    endp
+
+    ; Performs SCSI Read10 transaction 
+    ; 
+    dataTransferTestKB proc near
+
+        push edi                 ; 
+        push edx                 ;
+        push eax                 ;
+        push esi                 ; 
+        push cx                  ;
+        ;------------------------;
+        
+        mov [ValidDeviceAddress], 02h 
+        mov eax, [LinearWriteBufferAddress]
+        mov [LinearBulkWriteBufferAddress], eax 
+        mov [LinearBulkWriteBufferAddress], 080000000h
+
+        ; Start Value 
+        call printTDArrayDump
+
+        ; READ10 Pointer 
+        lea esi, Read10Request
+        ; Sectors for Transfer
+        mov cx, 120
+        mov byte ptr [Read10Request + 22], ch
+        mov byte ptr [Read10Request + 23], cl
+        ; READ10 Request Length
+        mov eax, 0F000h
+        mov dword ptr [Read10Request + 8], eax
+
+        xor edi, edi 
+        mov edx, 0h  
+        mov cx, 01h 
+
+      
+      readDataFromMassStorageDeviceKB:      
+        
+        bswap edx 
+        mov dword ptr [Read10Request + 17], edx
+        
+        mov al, [EDOutEndpointAddress] 
+        mov [ValidEndpoint], al
+        mov [QHEndpointParam], 02006000h
+        
+        call createQueueHead
+        call createBulkOutQTD
+        call runAQueueinCMD
+        call detectStateChangeControl
+        call stopAQueueinCMD
+        ;call printQTDStatus
+
+        mov eax, [BulkOutQTDToken]
+        xor eax, 80000000h
+        mov [BulkOutQTDToken], eax 
+        call getSCSIRead10TransactionKB
+
+        bswap edx
+        add edx, 80
+
+        loop readDataFromMassStorageDeviceKB
+        
+        ; End Value 
+        call printTDArrayDump
+        
+        ;mov [LinearBulkWriteBufferAddress], 080000FF0h
+        ;call printOutBufferDump
+        
+        
+        ;------------------------;
+        pop cx                   ;
+        pop esi                  ;
+        pop eax                  ;
+        pop edx                  ; 
+        pop edi                  ;
+
+        ret
+
+    endp
+
+    ; Performs SCSI Read10 1KB transaction 
+    ; 
+    getSCSIRead10TransactionKB proc near
+
+        push eax                 ;
+        push ebx                 ;
+        push ecx                 ; 
+        ;------------------------;
+        
+        ; x1 
+        mov al, [EDInEndpointAddress]
+        and ax, 0Fh 
+        mov [ValidEndpoint], al 
+        mov [QHEndpointParam], 02006000h        
+     
+        mov [InBytes], 5000h 
+        call createQueueHead
+        call createBulkInQTDExtra
+        call runAQueueinCMD
+        call detectStateChangeControl2
+        call stopAQueueinCMD
+        call printQTDStatus
+
+        ;------------------------;
+        pop ecx                  ; 
+        pop ebx                  ; 
+        pop eax                  ; 
+
+        ret
+
+    endp
+
+    ; Performs SCSI Read10 transaction 
+    ; 
+    dataTransferTestHighBufferQueue proc near
+
+        push edi                 ; 
+        push edx                 ;
+        push eax                 ;
+        push esi                 ; 
+        push cx                  ;
+        ;------------------------;
+        
+        mov [ValidDeviceAddress], 02h 
+        mov eax, [LinearWriteBufferAddress]
+        mov [LinearBulkWriteBufferAddress], eax 
+        mov [LinearBulkWriteBufferAddress], 080000000h
+
+        ; Start Value 
+        ;call printTDArrayDump
+
+        ; READ10 Pointer 
+        lea esi, Read10Request
+        ; Sectors for Transfer
+        mov cx, 120
+        mov byte ptr [Read10Request + 22], ch
+        mov byte ptr [Read10Request + 23], cl
+        ; READ10 Request Length
+        mov eax, 0F000h
+        mov dword ptr [Read10Request + 8], eax
+
+        xor edi, edi 
+        mov edx, 0h  
+        mov cx, 01h 
+
+      
+      readDataFromMassStorageDeviceHighBufferQueue:      
+        
+        bswap edx 
+        mov dword ptr [Read10Request + 17], edx
+        
+        mov al, [EDOutEndpointAddress] 
+        mov [ValidEndpoint], al
+        mov [QHEndpointParam], 02006000h
+        
+        call createQueueHead
+        call createBulkOutQTD
+        call runAQueueinCMD
+        call detectStateChangeControl
+        call stopAQueueinCMD
+        ;call printQTDStatus
+
+        mov eax, [BulkOutQTDToken]
+        xor eax, 80000000h
+        mov [BulkOutQTDToken], eax 
+        call getSCSIRead10TransactionHighBufferQueue
+
+        bswap edx
+        add edx, 80
+
+        loop readDataFromMassStorageDeviceHighBufferQueue
+        
+        ; End Value 
+        call printTDArrayDump
+        
+        ;mov [LinearBulkWriteBufferAddress], 080000FF0h
+        ;call printOutBufferDump
+        
+        
+        ;------------------------;
+        pop cx                   ;
+        pop esi                  ;
+        pop eax                  ;
+        pop edx                  ; 
+        pop edi                  ;
+
+        ret
+
+    endp
+
+    ; Performs SCSI Read10 1KB transaction 
+    ; 
+    getSCSIRead10TransactionHighBufferQueue proc near
+
+        push eax                 ;
+        push ebx                 ;
+        push ecx                 ; 
+        ;------------------------;
+        
+        ; x1 
+        mov al, [EDInEndpointAddress]
+        and ax, 0Fh 
+        mov [ValidEndpoint], al 
+        mov [QHEndpointParam], 02006000h        
+     
+        mov [InBytes], 5000h 
+        call createQueueHead
+        call createBulkInQTDExtraWithExtendedBuffer
+        
+        call runAQueueinCMD
+        call detectStateChangeControl2
+        call stopAQueueinCMD
+        call printQTDStatus
+
+        ;------------------------;
+        pop ecx                  ; 
+        pop ebx                  ; 
+        pop eax                  ; 
+
+        ret
+
+    endp
+
+
+    ; Performs SCSI Write10 transaction 
+    ; 
+    writeTransferTestKB proc near
+
+        push edi                 ; 
+        push edx                 ;
+        push eax                 ;
+        push esi                 ; 
+        push cx                  ;
+        ;------------------------;
+        
+        mov [ValidDeviceAddress], 02h 
+        mov eax, [LinearWriteBufferAddress]
+        mov [LinearBulkWriteBufferAddress], eax 
+        mov [LinearBulkWriteBufferAddress], 080000000h
+
+        ; Write10 Pointer 
+        lea esi, Write10Request
+        ; Sectors for Transfer
+        mov cx, 128
+        mov byte ptr [Write10Request + 22], ch
+        mov byte ptr [Write10Request + 23], cl
+        ; Write10 Request Length
+        mov eax, 10000h
+        mov dword ptr [Write10Request + 8], eax
+
+        ;xor edi, edi 
+        mov edx, 100  
+        mov cx, 01000h 
+      
+      WriteDataToMassStorageDeviceKB:      
+        
+        bswap edx 
+        mov dword ptr [Write10Request + 17], edx
+        
+        mov al, [EDOutEndpointAddress] 
+        mov [ValidEndpoint], al
+        mov [QHEndpointParam], 02006000h
+        
+        call createQueueHead
+        call createBulkOutQTD
+        call runAQueueinCMD
+        call detectStateChangeControl
+        call stopAQueueinCMD
+        ;call printQTDStatus
+
+        mov eax, [BulkOutQTDToken]
+        xor eax, 80000000h
+        mov [BulkOutQTDToken], eax 
+        call getSCSIWrite10TransactionKB
+
+        bswap edx
+        add edx, 128
+
+        loop WriteDataToMassStorageDeviceKB
+        
+        ; End Value 
+        xor eax, eax
+        lea dx, sResultPrint
+        mov ah, 09h
+        int 21h  
+
+
+        ;------------------------;
+        pop cx                   ;
+        pop esi                  ;
+        pop eax                  ;
+        pop edx                  ; 
+        pop edi                  ;
+
+        ret
+
+    endp
+
+    ; Performs SCSI Read10 1KB transaction 
+    ; 
+    getSCSIWrite10TransactionKB proc near
+
+        push eax                 ;
+        push ebx                 ;
+        push ecx                 ; 
+        ;------------------------;
+        
+        ; x1 (OUT)
+        mov al, [EDOutEndpointAddress]
+        and ax, 0Fh 
+        mov [ValidEndpoint], al 
+        mov [QHEndpointParam], 02006000h        
+     
+        mov [InBytes], 200h 
+        call createQueueHead
+        call createBulkOutQTDExtra
+        call runAQueueinCMD
+        call detectStateChangeControl2
+        call stopAQueueinCMD
+
+        ; x2 (IN)
+        mov al, [EDInEndpointAddress]
+        and ax, 0Fh 
+        mov [ValidEndpoint], al 
+        mov [QHEndpointParam], 02006000h        
+        
+        mov [InBytes], 0Dh 
+        call createQueueHead
+        call createBulkInQTD
+        call runAQueueinCMD
+        call detectStateChangeControl
+        call stopAQueueinCMD
+        call printQTDStatus
+
+        mov eax, [BulkInQTDToken]
+        xor eax, 80000000h
+        mov [BulkInQTDToken], eax 
+     
+
+        ;------------------------;
+        pop ecx                  ; 
+        pop ebx                  ; 
+        pop eax                  ; 
+
+        ret
+
+    endp
+
+    ; Saves 4KB transaction 
+    ; 
+    saveReadDataInFile proc near
+
+        push eax                 ;
+        push edx                 ;
+        push bx                  ;
+        push cx                  ;
+        ;------------------------;
+        
+        xor edx, edx 
+
+        ; Create File 
+        xor cx, cx 
+        lea dx, sDumpFile
+        mov ah, 3Ch 
+        int 21h
+
+        ; Write to File  
+        mov bx, ax 
+        
+        ; Points Address
+        xor eax, eax 
+        mov ax, ds 
+        shl eax, 4 
+        mov edx, [LinearWriteBufferAddress]
+        sub edx, eax  
+        mov ah, 40h 
+        mov cx, 1000h 
+        int 21h
+
+        ;Close File 
+        mov ah,3Eh              
+        int 21h
+
+        ;------------------------;
+        pop cx                   ;
+        pop bx                   ;
+        pop edx                  ; 
+        pop eax                  ; 
+
+        ret
+
+    endp
+
+endm
