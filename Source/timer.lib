@@ -1,0 +1,83 @@
+; Ivan Abramov (2015)
+
+initTimer macro
+
+    waitTimer proc near 
+
+        push ax 
+        push cx 
+        push dx
+
+        mov    al,0B6h
+        out    43h, al
+        mov    ax, 1193
+        out    42h, al
+        mov    al, ah
+        out    42h, al
+
+        mov    cx, 100
+
+_c1:    mov    ax, -1
+_c0:    mov    dx, ax
+        mov    al, 080h
+        out    43h, al
+        in    al, 42h
+        mov    ah,al
+        in    al, 42h
+        xchg ah, al
+        cmp    ax, dx
+        jb    _c0
+        loop    _c1
+        
+        push dx 
+        push cx 
+        push ax
+        
+        ret
+    
+    endp
+
+    ; Delay for AX millliseconds (int 15h)
+    ;     
+    Int15Delay  proc
+        push cx 
+        push ax 
+        push dx 
+
+        mov cx,1000
+        mul cx             ; Multiply AX on 1000
+        mov cx,dx
+        mov dx,ax          ; Movs DX:AX in CX:DX
+        mov ah,86h
+        int 15h            ; Call int 15h
+        
+        pop dx 
+        pop ax 
+        pop cx 
+
+        ret
+    
+    endp
+
+    ; Timer (Should be rewritten)
+    ;
+    proc Wait05s near
+    
+        push    es
+        push    eax 
+        mov     ax, 00h
+        mov     es, ax 
+        mov     eax, [es:046Ch]
+        inc     eax
+    
+    @@Wait: cmp eax,[es:046Ch]
+    
+        jae     @@Wait
+        pop     eax 
+        pop     es 
+        ret
+    
+    endp
+
+
+endm
