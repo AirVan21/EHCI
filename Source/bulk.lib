@@ -1,0 +1,100 @@
+; Ivan Abramov (2015)
+
+initBulk macro
+
+; =====================================================================================================
+; Main Data Structures 
+
+align 10h
+
+;Command Block Wrapper for SCSI Inquiry (31 bytes)
+InquiryBulkRequest:
+
+dd 43425355h    ;dCBWSignature
+dd 0A21h        ;dCBWTag 
+dd 24h          ;dCBWDataTransferLength
+db 80h          ;bmCBWFlags (0x80=IN 0x00=OUT)
+db 0            ;bCBWLun
+db 6            ;bCBWCBLength (of CBWCB)
+                ;CBWCB (16 bytes) see SCSI Inquiry Command
+db 12h          ;SCSI operation code
+db 0            ;SCSI reserved
+db 0            ;SCSI page or operation code
+db 0            ;SCSI reserved
+db 24h          ;SCSI allocation length
+db 0            ;SCSI control 
+db 15 DUP (0)   
+
+; =====================================================================================================
+
+Read10Request:
+;the Command Block Wrapper
+;the dCBWDataTransferLength, LBA, and TransferLength
+;
+dd 43425355h    ;dCBWSignature
+dd 021h         ;dCBWTag  
+dd 0            ;dCBWDataTransferLength 
+db 80h          ;bmCBWFlags (0x80=IN 0x00=OUT)
+db 0            ;bCBWLun
+db 10           ;bCBWCBLength,Read10 is a 10 byte CBWCB
+                ;CBWCB  10 bytes  (see Working Draft SCSI Block Commands SBC-2)
+db 28h          ;operation code for scsi Read10 
+db 0            ;RDPROTECT/DPO/FUA/FUA_NV
+db 0            ;LBA to read (msb) filled in below
+db 0            ;LBA
+db 0            ;LBA
+db 0            ;LBA  
+db 0            ;
+db 0            ;TransferLength MSB in blocks  
+db 0            ;TransferLength LSB 
+db 0            ;Control
+db 15 DUP(0)     
+; =====================================================================================================
+
+;Command Block Wrapper for SCSI ReadCapacity10 (31 bytes)
+ReadCapacityRequest:
+dd 43425355h    ;dCBWSignature
+dd 0A21h        ;dCBWTag  
+dd 8            ;dCBWDataTransferLength 
+db 80h          ;bmCBWFlags (0x80=IN 0x00=OUT)
+db 0            ;bCBWLun
+db 10           ;bCBWCBLength, ReadCapacity10 is a 10 byte command
+                ;CBWCB (16 bytes) see the SCSI ReadCapacity(10) Command
+db 25h          ;SCSI operation code for ReadCapacity10
+db 0            ;SCSI reserved
+dd 0            ;SCSI Logical Block Address
+dw 0            ;SCSI Reserved
+db 0            ;SCSI Reserved
+db 0            ;SCSI Control
+db 6 DUP(0)     
+
+; =====================================================================================================
+
+Write10Request:
+;the Command Block Wrapper  31 bytes
+;the byte order of the dCBWDataTransferLength is LSB FIRST
+dd 43425355h    ;dCBWSignature
+dd 0A21h        ;dCBWTag  
+dd 512          ;dCBWDataTransferLength 
+db 0            ;(00=OUT)
+db 0            ;bCBWLun
+db 10           ;bCBWCBLength, ReadCapacity10 is a 10 byte command
+                ;CBWCB (16 bytes) SCSI Write10Request Command
+                ; 
+db 02Ah         ;   
+db 0            ; 
+dd 0            ; 
+dw 0            ; 
+db 0            ; 
+db 0            ; Control 
+db 6 DUP(0)      
+
+; =====================================================================================================
+; Mass Storage Device Capacity Parametes  
+
+MSLogicalBlockAddress    dd 0h 
+MSBlockLength            dd 0h
+
+; =====================================================================================================
+
+endm
