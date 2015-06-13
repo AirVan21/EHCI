@@ -1,0 +1,1679 @@
+initMessageLib macro
+
+; =====================================================================================================
+
+qTDOffset         = 20h 
+PeriodicFramInMem = 01000000h
+DefaultBufferSize = 1000h 
+
+; =====================================================================================================
+; Offsets for USB Structures
+
+; Queue Head fields offset 
+; 
+QHHorizLinkOffset           = 0
+QHEndpointInfoOffset        = 4
+QHTransactionInfoOffset     = 8
+QHCurrentqTDOffset          = 12
+QHNextqTDOffset             = 16
+QHAlternqTDOffset           = 20 
+
+; Standard Device Requests' offsets
+;
+bmRequestTypeOffset         = 0
+bRequestOffset              = 1
+wValueOffset                = 2
+wIndexOffset                = 4
+wLengthOffset               = 6 
+
+; QH Endpoint characteristics  
+;
+QHEndpointParam dd 5008E000h
+
+; QH Endpoint Low Speed Param 
+;
+QHEndpointLowSpeed = 5808D000h 
+
+; QH Endpoint Full Speed Param 
+;
+QHEndpointFullSpeed = 5808C000h 
+
+; QH Endpoint High Speed Param 
+;
+QHEndpointHighSpeed = 5008E000h 
+
+
+; =====================================================================================================
+
+; Non Linear Address of Queue Head In Memory
+; 
+QHAddressInMem            dd 0h 
+
+; Linear Address of Queue Head In Memory
+; 
+LinearQHAddressInMem      dd 0h 
+
+; Non Linear Address of qTD In Memory
+;
+QTDAddress1               dd 0h
+
+; Linear Address of qTD In Memory
+;
+LinearQTDAddress1         dd 0h  
+
+; Linear Address of Data Buffer In Memory
+;
+LinearDataBufferAddress       dd 0h
+
+LinearWriteBufferAddress      dd 0h
+
+LinearBulkWriteBufferAddress  dd 0h
+
+LinearBulkTestTransferAddress dd 0h 
+
+; =====================================================================================================
+; Standard Device Requests
+
+; Get 2-byte Device Status 
+; 
+GetDeviceStatusReq         db 80h, 0h
+                           dw 0h, 0h, 2h
+; Get 2-byte Device Status 
+; 
+GetEndpointStatusReq       db 82h, 0h
+                           dw 0h, 82h, 2h  
+
+; Get 8-byte Device Descriptor 
+;
+GetDeviceDescReq8          db 80h, 6h
+                           dw 100h, 0, 8h
+
+; Get 18-byte Device Descriptor 
+;
+GetDeviceDescReq18        db 80h, 6h
+                          dw 100h, 0h, 12h
+; Get Interface Descriptor 
+;
+GetInterfaceDescReq       db 80h, 6h
+                          dw 400h, 0h, 9h ; 0x04 Descriptor type | 0x00
+
+; Get 9-byte Configuration Descriptor 
+;
+GetConfigDescReq          db 80h, 6h
+                          dw 200h, 0h, 9h
+
+; Get 64-byte Configuration Descriptor 
+;
+GetConfigDescReq64        db 80h, 6h
+                          dw 200h, 0h, 64    
+
+; Get String Descriptor (English Language)
+;
+GetStrDescReq             db 80h, 6h
+                          dw 300h, 0h, 4
+
+; Get String Descriptor (English Language)
+;
+GetStrDescReq64           db 80h, 6h
+                          dw 0302h, 0409h, 64
+ 
+; Set Device Address Request (First Address is 1)  
+;
+SetDeviceAddrReq          db 0,5
+                          dw 0,0,0
+
+; Get Configuration Request
+;
+GetConfigReq             db 80h, 08h 
+                         dw 0h, 0h, 1h
+
+; Set Configuration Request
+; Configuration value shpuld be written in wValue lower byte 
+;
+SetConfigReq             db 00h, 09h 
+                         dw 0h, 0h, 0h  
+
+; Get Hub Descriptor Request
+; 
+GetHubDescReq            db 10100000b, 06h 
+                         dw 2900h, 0h, 9h
+
+; Get Port Status Request
+; 
+GetPortStatusReq         db 0A3h, 00h 
+                         dw 0h, 0h, 4h
+
+; Get Hub Status Request
+; 
+GetHubStatusReq          db 0A0h, 00h 
+                         dw 0h, 0h, 4h
+
+; Set Port Feature 
+; 
+SetPortFeatureReq        db 023h, 03h 
+                         dw 0h, 0h, 0h
+
+; Clear Port Feature 
+; 
+ClearPortFeatureReq      db 023h, 01h 
+                         dw 0h, 0h, 0h ; wValue = Feature Selector | wIndex = Port Number
+
+; Set Port Feature 
+; 
+MassStorageResetReq      db 00100001b, 0FFh 
+                         dw 0h, 00h, 0h     ; wIndex is Interface Number 
+; Set Port Feature 
+; 
+GetMaxLunReq             db 10100001b, 0FEh 
+                         dw 0h, 00h, 1h     ; wIndex is Interface Number 
+
+; Clear Endpoint Halt 
+; 
+ClearEndpointHaltReq     db 02h, 01h 
+                         dw 0h, 02h, 0h ; wValue = Feature Selector 
+
+; ===================================================================================================== 
+; Port Feature
+
+featurePORT_ENABLE        = 1
+featurePORT_RESET         = 4
+featurePORT_POWER         = 8 
+featureC_PORT_CONNECT     = 16
+featureC_PORT_RESET       = 20  
+
+; =====================================================================================================   
+; Tokens for qTDs 
+
+; Token for SETUP Transaction
+;
+SetupQTDToken            dd 00080280h 
+
+; Token for IN Transaction
+;
+InQTDToken               dd 80120180h
+
+; Token for OUT Transaction
+;
+OutQTDToken              dd 0h  
+
+; Bulk IN Transaction
+;
+BulkInQTDToken           dd 00000D80h
+
+; Bulk IN Transaction
+;
+BulkInQTDTokenExtBuffer  dd 00004D80h
+
+; Bulk Out Transaction
+;
+BulkOutQTDToken          dd 001F0080h   
+
+
+; ===================================================================================================== 
+; Paramenters for Current Configuration 
+
+; Current Device Address
+; 
+ValidDeviceAddress        db 0h 
+
+; Current Endpoint
+;
+ValidEndpoint             db 0h 
+
+; Bytes Parameter for IN Transaction 
+;
+InBytes                   dw 0h 
+
+; ===================================================================================================== 
+
+FrameListBaseAddr dw 0     ;FrameListBase
+
+FrameListBase db 8*1024 dup(0)
+
+; Data  Buffer (Information For Devices)
+;
+DataBuffer db 4096 DUP(0) 
+
+; Buffer for (Information From Devices)
+; 
+WriteBuffer db 4096 DUP(0) 
+            db 4096 DUP(0)
+; Bulk Transfer 
+; 
+WriteBulkTestTransfer db 4096 DUP(2) 
+
+; =====================================================================================================  
+
+    ; Allocates Memory for QH Structures
+    ; Creates Addresses on QH Structures
+    ; Update AsynchQueue Base Addresses in Register space 
+    ;
+    initAsynchQueue proc near
+
+        call initializeQueueSpace
+        call updateAsynchQueue
+
+        db 0C3h                            ; ret  
+
+    endp
+
+    ; Creates MAIN Control Structures for SETUP Token Transaction
+    ; Sets USBCMD (Asynch Queue) bit to ONE 
+    ; Waits timer 
+    ; Sets USBCMD (Asynch Queue) bit to ZERO 
+    ; 
+    ; ESI - contains pointer to perfrrmed transaction
+    performAQSetupTransaction proc
+        
+        push ax 
+
+        call createQueueHead
+        call createSetupQTD
+        call runAQueueinCMD
+        mov ax, 10h 
+        call Int15Delay
+        call stopAQueueinCMD
+        ;call printQTDStatus 
+
+        pop ax
+
+        ret 
+    
+    endp
+
+    ; Creates MAIN Control Structures 
+    ; Sets USBCMD (Asynch Queue) bit to ONE 
+    ; Waits timer 
+    ; Sets USBCMD (Asynch Queue) bit to ZERO 
+    ; 
+    ; ESI - contains pointer to perfrrmed transaction
+    performAQInTransaction proc
+        
+        push ax 
+        
+        mov ax, [esi + wLengthOffset] ; Bytes to Transfer
+        mov [InBytes], ax               ; Update IN Bytes field 
+        call createQueueHead
+        call createInQTD
+        call runAQueueinCMD
+        call detectStateChangeControl
+        call stopAQueueinCMD
+        call printQTDStatus 
+        
+        pop ax 
+
+        ret 
+    
+    endp  
+
+    ; Creates MAIN Bulk Structure for OUT Transaction 
+    ; Sets USBCMD (Asynch Queue) bit to ONE 
+    ; Waits timer 
+    ; Sets USBCMD (Asynch Queue) bit to ZERO 
+    ;
+    ; ESI - Address of SCSI Command  
+    performAQBulkOutTransaction proc
+        
+        push eax 
+
+        mov al, [EDOutEndpointAddress] 
+        mov [ValidEndpoint], al
+        mov [QHEndpointParam], 02006000h
+        call createQueueHead
+        call createBulkOutQTD
+        call runAQueueinCMD
+        call detectStateChange
+        call stopAQueueinCMD
+        
+        mov eax, [BulkOutQTDToken]
+        xor eax, 80000000h
+        mov [BulkOutQTDToken], eax 
+        
+        pop eax
+
+        db 0C3h                            ; ret 
+    
+    endp
+    
+    ; Creates MAIN Bulk Structure for IN Transaction 
+    ; Sets USBCMD (Asynch Queue) bit to ONE 
+    ; Waits timer 
+    ; Sets USBCMD (Asynch Queue) bit to ZERO 
+    ; 
+    performAQBulkInTransaction proc
+        
+        push eax 
+        push ecx 
+
+        mov al, [EDInEndpointAddress]
+        and ax, 0Fh 
+        mov [ValidEndpoint], al 
+        mov [QHEndpointParam], 02006000h
+        call createQueueHead
+        call createBulkInQTD
+        call runAQueueinCMD
+        call detectStateChange
+        call stopAQueueinCMD
+        
+        mov eax, [BulkInQTDToken]
+        xor eax, 80000000h
+        mov [BulkInQTDToken], eax 
+        
+        pop ecx 
+        pop eax
+
+        db 0C3h                            ; ret 
+    
+    endp
+
+    ; Creates Setup qTD with Payload (described in ESI)
+    ;
+    ; ESI - contains Address Of Standat Device Request Data 
+    createSetupQTD proc near
+
+        ;===============================
+        ; Constructing a Queue Head 
+
+        push eax                        ; Saves eax
+        push ebx                        ; 
+        push edx                        ; Will be used as a mem pointer
+        ;-------------------------------;
+
+        ;===============================
+        ; Constructing Setup qTD
+        
+        xor ebx, ebx 
+        
+        ; Next qTD pointer (0x00)
+        mov eax, dword ptr[QTDAddress1]   ; Address of first qTD         
+        mov ebx, 01h                      ;
+        mov [eax], ebx                    ; Puts pointer in qTD 
+
+        ; Alternative qTD (0x04) 
+        add eax, 4                        ; 
+        mov edx, 01h                      ; Set Alternative qTD Invalid 
+        mov [eax], edx                    ; Alternative qTD = 0h 
+
+        ; qTD token (0x08)                   
+        add eax, 4                        ; 
+        mov edx, dword ptr [SetupQTDToken]; 8 byte Payload [30:16] | Setup PID | Active bit 
+        mov [eax], edx                    ; 
+
+        ; qTD Buffer Pointer list
+        ; 4Kbyte (5000h) aligned (0x0C)
+        add eax, 4                        
+        mov edx, dword ptr [LinearDataBufferAddress]; Payload Pointer 
+        mov [eax], edx                      
+
+        ; Write Payload (8 byte)
+        mov ebx, [esi]                     ; First 4-Byte From Request
+        mov fs:[edx], ebx                  ; 
+        add edx, 4 
+        mov ebx, [esi + wIndexOffset]      ; Second 4-Byte From Request
+        mov fs:[edx], ebx                   
+        
+        xor ebx, ebx                       ; Zero Extra Buffer Pointers
+        ; (0x10)
+        add eax, 4
+        mov [eax], ebx 
+        ; (0x14)
+        add eax, 4
+        mov [eax], ebx 
+        ; (0x18)
+        add eax, 4
+        mov [eax], ebx 
+        ; (0x1C)
+        add eax, 4
+        mov [eax], ebx 
+        
+        ;-------------------------------;
+        pop edx
+        pop ebx
+        pop eax 
+        
+        db 0C3h                            ; ret 
+
+    endp
+
+    ; Creates IN qTD 
+    ;
+    ; InQTDToken - Address of Token for IN Transaction
+    createInQTD proc near 
+
+        push eax                        ; Saves eax
+        push ebx                        ; 
+        push edx                        ; Will be used as a mem pointer
+
+
+        ;===============================
+        ; Constructing IN qTD
+
+        xor ebx, ebx 
+        
+        ; Next qTD pointer (0x00)
+        mov eax, dword ptr[QTDAddress1]  ; Address of first qTD         
+        mov ebx, 01h                     ;
+        mov [eax], ebx                   ; Puts pointer in qTD 
+
+        ; (0x04)
+        add eax, 04h                     ;
+        mov ebx, 01h                     ; Invalid Alternative Pointer
+        mov [eax], ebx                     ; ZERO field 
+        
+        ; (0x08)
+        xor edx, edx                     ; 
+        mov dx, [InBytes]                ; Bytes to transfer for IN Transaction
+        shl edx, 16                      ; [30:16] = bytes to transfer
+        add eax, 04h                     ;
+        mov ebx, dword ptr [InQTDToken]  ; [31] = 1 In Packet; [14:12] = 000b; [9:8] = 01b IN PID; [7:0] = 0x80 Ready Status 
+        and ebx, 8000FFFFh               ; Clear Total Bytes to Transfer field 
+        add ebx, edx                     ; Set Appropriate Byte Amount
+        mov [eax], ebx                   ; [30:16] = bytes to transfer 
+        
+        ; (0x0C)
+        add eax, 04h                     ;
+        mov ebx, dword ptr [LinearWriteBufferAddress]
+        mov [eax], ebx                   ; Address of Buffer to Write
+
+        xor ebx, ebx                     ; Zero Extra Buffer Pointers
+        
+        ; (0x10)
+        add eax, 4
+        mov [eax], ebx 
+        ; (0x14)
+        add eax, 4
+        mov [eax], ebx 
+        ; (0x18)
+        add eax, 4
+        mov [eax], ebx 
+        ; (0x1C)
+        add eax, 4
+        mov [eax], ebx
+
+
+        
+        pop edx
+        pop ebx
+        pop eax 
+        
+        db 0C3h                            ; ret
+
+    endp  
+
+    ; Creates Bulk IN  
+    ;
+    ; InQTDToken - Address of Token for IN Transaction
+    createBulkInQTD proc near
+
+        push eax                        ; Saves eax
+        push ebx                        ; 
+        push edx                        ; Will be used as a mem pointer
+        ;-------------------------------;
+
+        xor ebx, ebx 
+        
+        ; Next qTD pointer (0x00)
+        mov eax, dword ptr[QTDAddress1]  ; Address of first qTD         
+        add ebx, 01h                    
+        mov [eax], ebx                   ; Puts pointer in qTD 
+
+        ; (0x04)
+        add eax, 04h                     ;
+        mov ebx, 01h                     ; Invalid Alternative Pointer
+        mov [eax], ebx                   ; ZERO field 
+        
+        ; (0x08)
+        xor edx, edx                     ; 
+        mov dx, [InBytes]                ; Bytes to transfer for IN Transaction
+        shl edx, 16                      ; [30:16] = bytes to transfer
+        add eax, 04h                     ;
+        mov ebx, dword ptr [BulkInQTDToken]; [31] = 1 In Packet; [14:12] = 000b; [9:8] = 01b IN PID; [7:0] = 0x80 Ready Status 
+        and ebx, 8000FFFFh               ; Clear Total Bytes to Transfer field 
+        add ebx, edx                     ; Set Appropriate Byte Amount
+        mov [eax], ebx                   ; [30:16] = bytes to transfer
+        
+        ; (0x0C)
+        add eax, 04h                     ;
+        mov ebx, dword ptr [LinearBulkWriteBufferAddress]
+        mov [eax], ebx                   ; Address of Buffer to Write
+
+        xor ebx, ebx                     ; Zero Extra Buffer Pointers
+        
+        ; (0x10)
+        add eax, 4
+        mov [eax], ebx 
+        ; (0x14)
+        add eax, 4
+        mov [eax], ebx 
+        ; (0x18)
+        add eax, 4
+        mov [eax], ebx 
+        ; (0x1C)
+        add eax, 4
+        mov [eax], ebx
+        ; (0x20)
+        add eax, 4
+        mov [eax], ebx 
+        ; (0x24)
+        add eax, 4
+        mov [eax], ebx 
+        ; (0x28)
+        add eax, 4
+        mov [eax], ebx 
+        ; (0x2C)
+        add eax, 4
+        mov [eax], ebx
+        ; (0x30)
+        add eax, 4
+        mov [eax], ebx 
+          
+        ;------------------------------;
+        
+        pop edx
+        pop ebx
+        pop eax 
+        
+        db 0C3h                         ; ret
+    
+    endp
+
+    ; Creates Bulk IN  with Extended Buffer 
+    ;
+    ; InQTDToken - Address of Token for IN Transaction
+    createBulkInQTDWithExtendedBuffer proc near
+
+        push eax                        ; Saves eax
+        push ebx                        ; 
+        push edx                        ; Will be used as a mem pointer
+        ;-------------------------------;
+
+        xor ebx, ebx 
+        
+        ; Next qTD pointer (0x00)
+        mov eax, dword ptr[QTDAddress1]  ; Address of first qTD         
+        add ebx, 01h                    
+        mov [eax], ebx                   ; Puts pointer in qTD 
+
+        ; (0x04)
+        add eax, 04h                     ;
+        mov ebx, 01h                     ; Invalid Alternative Pointer
+        mov [eax], ebx                   ; ZERO field 
+        
+        ; (0x08)
+        xor edx, edx                     ; 
+        mov dx, [InBytes]                ; Bytes to transfer for IN Transaction
+        shl edx, 16                      ; [30:16] = bytes to transfer
+        add eax, 04h                     ;
+        mov ebx, dword ptr [BulkInQTDTokenExtBuffer]; [31] = 1 In Packet; [14:12] = 000b; [9:8] = 01b IN PID; [7:0] = 0x80 Ready Status 
+        and ebx, 8000FFFFh               ; Clear Total Bytes to Transfer field 
+        add ebx, edx                     ; Set Appropriate Byte Amount
+        mov [eax], ebx                   ; [30:16] = bytes to transfer
+        
+        ;-------------------------------;
+
+        ; (0x0C) Buffer 0 
+        add eax, 04h                      
+        mov ebx, dword ptr [LinearBulkWriteBufferAddress]
+        mov [eax], ebx                      
+
+        ;------------------------------;
+
+        xor edx, edx 
+        mov dx, DefaultBufferSize 
+        add ebx, edx 
+        
+        ; Buffer 1
+        ; (0x10)
+        add eax, 4
+        mov [eax], ebx 
+        
+        ; Buffer 2
+        add ebx, edx  
+        ; (0x14)
+        add eax, 4
+        mov [eax], ebx 
+        
+        ; Buffer 3
+        add ebx, edx 
+        ; (0x18)
+        add eax, 4
+        mov [eax], ebx 
+
+        ; Buffer 4 
+        ; (0x1C)
+        add ebx, edx 
+        add eax, 4
+        mov [eax], ebx
+        
+        ;--------------------------------;
+
+        ; Update Buffer Address ;
+        
+        add ebx, edx 
+        mov [LinearBulkWriteBufferAddress], ebx 
+
+        ;-------------------------------;
+        
+        xor ebx, ebx 
+        
+        ; (0x20)
+        add eax, 4
+        mov [eax], ebx 
+        
+        ; (0x24)
+        add eax, 4
+        mov [eax], ebx 
+        
+        ; (0x28)
+        add eax, 4
+        mov [eax], ebx 
+        
+        ; (0x2C)
+        add eax, 4
+        mov [eax], ebx
+        
+        ; (0x30)
+        add eax, 4
+        mov [eax], ebx 
+          
+        ;------------------------------;
+        
+        pop edx
+        pop ebx
+        pop eax 
+        
+        db 0C3h                        ; ret
+    
+    endp
+
+    ; Creates Bulk IN  
+    ;
+    ; InQTDToken - Address of First Token for IN Transaction
+    createBulkInQTDExtra proc near
+
+        push eax                        ; Saves eax
+        push ebx                        ; 
+        push edx                        ; Will be used as a mem pointer
+        push esi                        ;
+        push ecx                        ;
+        ;-------------------------------;
+
+        xor ebx, ebx 
+
+        mov eax, dword ptr [QTDAddress1] ; Address of first qTD 
+          mov esi, [LinearQTDAddress1]   ;
+          add esi, 40h 
+          
+          mov ecx, 8
+      
+      createBulkInQTDLoop:
+
+        ; Next qTD pointer (0x00)
+                           
+        mov [eax], esi                   ; Puts pointer in qTD 
+
+        ; (0x04)
+        add eax, 04h                     ;
+        mov ebx, 01h                     ; Invalid Alternative Pointer
+        mov [eax], ebx                   ; ZERO field 
+        
+        ; (0x08)
+        xor edx, edx                     ; 
+        mov dx, [InBytes]                ; Bytes to transfer for IN Transaction
+        shl edx, 16                      ; [30:16] = bytes to transfer
+        add eax, 04h                     ;
+        mov ebx, dword ptr [BulkInQTDToken]; [31] = 1 In Packet; [14:12] = 000b; [9:8] = 01b IN PID; [7:0] = 0x80 Ready Status 
+        and ebx, 8000FFFFh               ; Clear Total Bytes to Transfer field 
+        add ebx, edx                     ; Set Appropriate Byte Amount
+        mov [eax], ebx                   ; [30:16] = bytes to transfer
+        
+        ; (0x0C)
+        add eax, 04h                     ;
+        mov ebx, dword ptr [LinearBulkWriteBufferAddress]
+        mov [eax], ebx                   ; Address of Buffer to Write
+        xor edx, edx 
+        mov dx, [InBytes]
+        add ebx, edx
+        mov [LinearBulkWriteBufferAddress], ebx   
+        
+        xor ebx, ebx                      ; Zero Extra Buffer Pointers
+        
+        push cx
+        
+        mov cx, 12 
+      
+      zeroQTDFiledsLoop:
+        add eax, 4
+        mov [eax], ebx 
+        loop zeroQTDFiledsLoop
+
+        pop cx 
+        
+        mov edx, [BulkInQTDToken]
+        xor edx, 80000000h
+        mov [BulkInQTDToken], edx 
+        
+        ; (0x40) 
+        add eax, 4
+        add esi, 40h                     ; Pointer to the next qTD 
+
+        loop createBulkInQTDLoop
+        
+        ; Last qTD in Queue
+        mov ebx, 01h                     ;
+        mov [eax], ebx                   ; Puts pointer in qTD 
+
+        ; (0x04)
+        add eax, 04h                     ;
+        mov ebx, 01h                     ; Invalid Alternative Pointer
+        mov [eax], ebx                   ; ZERO field 
+        
+        ; (0x08)
+        xor edx, edx                     ; 
+        mov dx, 0Dh                      ;  
+        shl edx, 16                      ; [30:16] = bytes to transfer
+        add eax, 04h                     ;
+        mov ebx, dword ptr [BulkInQTDToken]; [31] = 1 In Packet; [14:12] = 000b; [9:8] = 01b IN PID; [7:0] = 0x80 Ready Status 
+        and ebx, 8000FFFFh               ; Clear Total Bytes to Transfer field 
+        add ebx, edx                     ; Set Appropriate Byte Amount
+        mov [eax], ebx                   ; [30:16] = bytes to transfer
+        
+        ; (0x0C)
+        add eax, 04h                     ;
+        mov ebx, dword ptr [LinearBulkWriteBufferAddress]
+        mov [eax], ebx                   ; Address of Buffer to Write
+        xor edx, edx 
+        mov dx, [InBytes]
+        add ebx, edx  
+        mov [LinearWriteBufferAddress], ebx ; This Address Will Be Rewritten in Other Iterations  
+        
+        xor ebx, ebx                     ; Zero Extra Buffer Pointers
+        
+        ; (0x10)
+        add eax, 4
+        mov [eax], ebx 
+        ; (0x14)
+        add eax, 4
+        mov [eax], ebx 
+        ; (0x18)
+        add eax, 4
+        mov [eax], ebx 
+        ; (0x1C)
+        add eax, 4
+        mov [eax], ebx
+        ; (0x20)
+        add eax, 4
+        mov [eax], ebx 
+        ; (0x24)
+        add eax, 4
+        mov [eax], ebx 
+        ; (0x28)
+        add eax, 4
+        mov [eax], ebx 
+        ; (0x2C)
+        add eax, 4
+        mov [eax], ebx
+        ; (0x30)
+        add eax, 4
+        mov [eax], ebx  
+
+        mov edx, [BulkInQTDToken]
+        xor edx, 80000000h
+        mov [BulkInQTDToken], edx  
+          
+        ;------------------------------;
+        
+        pop ecx 
+        pop esi 
+        pop edx
+        pop ebx
+        pop eax 
+        
+        db 0C3h                            ; ret
+    
+    endp
+
+    ; Creates Bulk IN  
+    ;
+    ; InQTDToken - Address of First Token for IN Transaction
+    createBulkInQTDExtraWithExtendedBuffer proc near
+
+        push eax                        ; Saves eax
+        push ebx                        ; 
+        push edx                        ; Will be used as a mem pointer
+        push esi                        ;
+        push ecx                        ;
+        push edi                        ; 
+        ;-------------------------------;
+
+        xor edi, edi 
+        xor edx, edx                     
+        xor ebx, ebx 
+
+        mov eax, dword ptr [QTDAddress1]; Address of first qTD 
+          mov esi, [LinearQTDAddress1]  ;
+          add esi, 40h 
+          
+          mov ecx, 2
+      
+      createBulkInQTDLoopExtendedBuffer:
+
+        ; Next qTD pointer (0x00)                   
+        mov [eax], esi                  ; Puts pointer in qTD 
+        
+        ; (0x04)
+        add eax, 04h                    ;
+        mov ebx, 01h                    ; Invalid Alternative Pointer
+        mov [eax], ebx                  ; ZERO field 
+        
+        ; (0x08)
+        add eax, 04h                    ;
+        mov dx, [InBytes]               ; Bytes to transfer for IN Transaction
+        shl edx, 16                     ; [30:16] = bytes to transfer
+        mov ebx, dword ptr [BulkInQTDTokenExtBuffer]; [31] = 1 In Packet; [14:12] = 000b; [9:8] = 01b IN PID; [7:0] = 0x80 Ready Status 
+        and ebx, 8000FFFFh              ; Clear Total Bytes to Transfer field 
+        add ebx, edx                    ; Set Appropriate Byte Amount
+        mov [eax], ebx                  ; [30:16] = bytes to transfer
+        
+        ; (0x0C)
+        mov ebx, dword ptr [LinearBulkWriteBufferAddress]
+        mov [eax + 4], ebx              ; Address of Buffer to Write
+        ;-------------------------------;
+
+        mov edx, DefaultBufferSize 
+        
+        push cx
+        mov cx, 4
+
+      fillBuffers:
+          
+          add eax, 4
+          add ebx, edx
+          mov [eax + 4], ebx 
+
+          loop fillBuffers
+
+          pop cx 
+
+        ;--------------------------------;
+        ; Update Buffer Address ;
+        
+        mov [LinearBulkWriteBufferAddress], ebx 
+
+        ;-------------------------------;
+        
+        push cx
+        mov cx, 10
+      
+      zeroQTDFiledsLoopExtendedBuffer:
+
+        add eax, 4
+        mov [eax + 4], edi   
+        loop zeroQTDFiledsLoopExtendedBuffer
+        
+        pop cx 
+        
+        mov edx, [BulkInQTDTokenExtBuffer]
+        xor edx, 80000000h
+        mov [BulkInQTDTokenExtBuffer], edx 
+        add esi, 40h                         ; Pointer to the next qTD 
+
+        loop createBulkInQTDLoopExtendedBuffer
+        
+        
+        ; Last qTD in Queue
+        
+        mov ebx, 01h                     ;
+        mov [eax], ebx                   ; Puts pointer in qTD 
+
+        ; (0x04)
+        add eax, 04h                     ;
+        mov ebx, 01h                     ; Invalid Alternative Pointer
+        mov [eax], ebx                   ; ZERO field 
+        
+        ; (0x08)
+        xor edx, edx                     ; 
+        mov dx, 0Dh                      ;  
+        shl edx, 16                      ; [30:16] = bytes to transfer
+        add eax, 04h                     ;
+        mov ebx, dword ptr [BulkInQTDToken]; [31] = 1 In Packet; [14:12] = 000b; [9:8] = 01b IN PID; [7:0] = 0x80 Ready Status 
+        and ebx, 8000FFFFh               ; Clear Total Bytes to Transfer field 
+        add ebx, edx                     ; Set Appropriate Byte Amount
+        mov [eax], ebx                   ; [30:16] = bytes to transfer
+        
+        ; (0x0C)
+        add eax, 04h                     ;
+        mov ebx, dword ptr [LinearBulkWriteBufferAddress]
+        mov [eax], ebx                   ; Address of Buffer to Write
+        xor edx, edx 
+        mov dx, [InBytes]
+        add ebx, edx  
+        mov [LinearWriteBufferAddress], ebx ; This Address Will Be Rewritten in Other Iterations  
+        
+        xor ebx, ebx                      ; Zero Extra Buffer Pointers
+        
+        ; (0x10)
+        add eax, 4
+        mov [eax], ebx 
+        ; (0x14)
+        add eax, 4
+        mov [eax], ebx 
+        ; (0x18)
+        add eax, 4
+        mov [eax], ebx 
+        ; (0x1C)
+        add eax, 4
+        mov [eax], ebx
+        ; (0x20)
+        add eax, 4
+        mov [eax], ebx 
+        ; (0x24)
+        add eax, 4
+        mov [eax], ebx 
+        ; (0x28)
+        add eax, 4
+        mov [eax], ebx 
+        ; (0x2C)
+        add eax, 4
+        mov [eax], ebx
+        ; (0x30)
+        add eax, 4
+        mov [eax], ebx  
+
+        mov edx, [BulkInQTDToken]
+        xor edx, 80000000h
+        mov [BulkInQTDToken], edx  
+          
+        ;------------------------------;
+        
+        pop edi 
+        pop ecx 
+        pop esi 
+        pop edx
+        pop ebx
+        pop eax 
+        
+        db 0C3h                            ; ret
+    
+    endp
+
+    ; Creates Bulk Out  
+    ;
+    ; InQTDToken - Address of First Token for IN Transaction
+    createBulkOutQTDExtra proc near
+
+        push eax                        ; Saves eax
+        push ebx                        ; 
+        push edx                        ; Will be used as a mem pointer
+        push esi                        ;
+        push ecx                        ;
+        ;-------------------------------;
+
+        xor ebx, ebx 
+
+        mov eax, dword ptr [QTDAddress1]; Address of first qTD 
+          mov esi, [LinearQTDAddress1]  ;
+          add esi, 40h 
+          
+          mov ecx, 128
+      
+      createBulkOutQTDLoop:
+
+        ; Next qTD pointer (0x00)
+                           
+        mov [eax], esi                  ; Puts pointer in qTD 
+
+        ; (0x04)
+        add eax, 04h                    ;
+        mov ebx, 01h                    ; Invalid Alternative Pointer
+        mov [eax], ebx                  ; ZERO field 
+        
+        ; (0x08)
+        xor edx, edx                    ; 
+        mov dx, [InBytes]               ; Bytes to transfer for IN Transaction
+        shl edx, 16                     ; [30:16] = bytes to transfer
+        add eax, 04h                    ;
+        mov ebx, dword ptr [BulkOutQTDToken]; [31] = 1 In Packet; [14:12] = 000b; [9:8] = 01b IN PID; [7:0] = 0x80 Ready Status 
+        and ebx, 8000FFFFh              ; Clear Total Bytes to Transfer field 
+        add ebx, edx                    ; Set Appropriate Byte Amount
+        mov [eax], ebx                  ; [30:16] = bytes to transfer
+        
+        ; (0x0C)
+        add eax, 04h                    ;
+        mov ebx, dword ptr [LinearBulkTestTransferAddress]
+        mov [eax], ebx                  ; Address of Buffer to Transfer
+        xor ebx, ebx                      
+        
+        push cx
+        
+        mov cx, 12       
+                                         ; Zero Extra Buffer Pointers
+      zeroOutQTDFiledsLoop:
+
+        add eax, 4
+        mov [eax], ebx 
+
+        loop zeroOutQTDFiledsLoop
+
+        pop cx 
+        
+        mov edx, [BulkOutQTDToken]
+        xor edx, 80000000h
+        mov [BulkOutQTDToken], edx 
+        
+        ; (0x40) 
+        add eax, 4
+        add esi, 40h                     ; Pointer to the next qTD 
+
+        loop createBulkOutQTDLoop
+
+        ;  Empty qTD Pointer for last qTD   
+        sub eax, 40h 
+        mov ebx, 01h 
+        mov [eax], ebx  
+          
+        ;------------------------------;
+        
+        pop ecx 
+        pop esi 
+        pop edx
+        pop ebx
+        pop eax 
+        
+        db 0C3h                            ; ret
+    
+    endp
+
+
+    ; Creates Bulk OUT  
+    ;
+    ; InQTDToken - Address of Token for IN Transaction
+    ; ESI - Address Of SCSI Command
+    createBulkOutQTD proc near
+
+        push eax                        ; Saves eax
+        push ebx                        ; 
+        push edx                        ; Will be used as a mem pointer
+        ;-------------------------------;
+
+        xor ebx, ebx 
+        
+        ; Next qTD pointer (0x00)
+        mov eax, dword ptr[QTDAddress1] ; Address of first qTD         
+        mov ebx, 01h                    ;
+        mov [eax], ebx                  ; Puts pointer in qTD 
+
+        ; (0x04)
+        add eax, 04h                    ;
+        mov ebx, 01h                    ; Invalid Alternative Pointer
+        mov [eax], ebx                  ; ZERO field 
+        
+        ; (0x08)
+        add eax, 04h                    ;
+        mov ebx, dword ptr [BulkOutQTDToken] ; [31] = 1 In Packet; [14:12] = 000b; [9:8] = 01b IN PID; [7:0] = 0x80 Ready Status 
+        mov [eax], ebx                  ; [30:16] = bytes to transfer 
+        
+        ; (0x0C)
+        add eax, 04h                    ;
+        mov ebx, dword ptr [LinearDataBufferAddress]
+        mov [eax], ebx                  ; Address of Buffer to Read 
+
+        mov edx, dword ptr [esi]
+        mov fs:[ebx], edx 
+        
+        mov edx, dword ptr [esi + 4]
+        mov fs:[ebx + 4], edx           
+        
+        mov edx, dword ptr [esi + 8]
+        mov fs:[ebx + 8], edx 
+        
+        mov edx, dword ptr [esi + 12]
+        mov fs:[ebx + 12], edx         
+        
+        mov edx, dword ptr [esi + 16]
+        mov fs:[ebx + 16], edx         
+        
+        mov edx, dword ptr [esi + 20]
+        mov fs:[ebx + 20], edx 
+        
+        mov edx, dword ptr [esi + 24]
+        mov fs:[ebx + 24], edx
+
+        mov edx, dword ptr [esi + 28]
+        mov fs:[ebx + 28], edx 
+        
+        ; Zero Extra Buffer Pointers
+        xor ebx, ebx 
+        
+        ; (0x10)
+        add eax, 4
+        mov [eax], ebx 
+        ; (0x14)
+        add eax, 4
+        mov [eax], ebx 
+        ; (0x18)
+        add eax, 4
+        mov [eax], ebx 
+        ; (0x1C)
+        add eax, 4
+        mov [eax], ebx 
+        
+        ;------------------------------;
+        
+        pop edx
+        pop ebx
+        pop eax 
+        
+        db 0C3h                         ; ret
+    
+    endp
+
+    ; Constructing a Queue Head 
+    ; 
+    createQueueHead proc near
+        
+        push eax                        ; Saves eax
+        push ebx                        ; 
+        push edx                        ;
+        push cx                         ; 
+        ;-------------------------------;
+
+        xor edx, edx                    ;
+        
+        ; QH Horizontal Link Pointer (0x00)
+        mov eax, dword ptr [QHAddressInMem] ; Pointer to the Queue
+        mov dx, ds                      ; Data Segment
+        shl edx, 4                      ; Linear Address
+        add eax, edx                    ; 
+        mov ebx, eax                    ;
+        or ebx, 02h                     ; 
+        mov eax, dword ptr [QHAddressInMem] 
+        mov [eax], ebx                  ; 2-nd bit shows that this is QH
+
+        ; Endpoint characteristics (0x04)
+        add eax, 4                      ;
+        mov ebx, dword ptr [QHEndpointParam]        
+        xor edx, edx                    ; 
+        mov dl, [ValidDeviceAddress]    ;
+        add bl, dl                      ; Add Device Address
+        xor dx, dx                      ;
+        mov dl, [ValidEndpoint]         ;
+        shl dx, 8                       ; Endpoint number [8:11]
+        add bx, dx                      ; 
+        mov [eax], ebx                  ; (0x400 - max packet size [26:16])
+
+        ; Transaction information (0x08)
+        add eax, 4 
+        mov ebx, 40000000h              ; 
+        mov [eax], ebx                  ; One transaction per microframe
+
+        ; Current qTD (0x0C)
+        add eax, 4                      ; Set as Zero 
+        xor ebx, ebx                    ; 
+        mov [eax], ebx                  ;
+
+        ; Next qTD (0x10)
+        add eax, 4 
+        mov edx, [LinearQTDAddress1]    ; 
+        mov [eax], edx                  ;
+
+        ; Alternative qTD Pointer (0x14)
+        add eax, 4 
+        mov ebx, 01h                    ; Mark as Invalid 
+        mov [eax], ebx                  ; Input invalid 
+
+        xor ebx, ebx                    ; 
+        mov cx, 10                      ; Amount 
+
+      loopOverQHfields:
+
+          add eax, 04h                  ; Step size
+          mov [eax], ebx                 
+
+          loop loopOverQHfields         ; Zero field
+        
+        ;-------------------------------;    
+        pop cx                          ;
+        pop edx                         ;
+        pop ebx                         ; 
+        pop eax                         ; 
+        
+        db 0C3h                         ; ret 
+
+    endp 
+
+    
+    ; Sets USBCMD (Run/Stop) zero-bit to ONE  
+    ; Software shouldn't write USBCMD (Run/Stop) until USBSTS (HCHalted) bit is one    
+    ; 
+    runHCinCMD proc
+
+        push edx                        ; Save Register
+        push ebx                        ; 
+        push cx                         ;
+        ;-------------------------------;
+
+        mov ebx, HCBaseAddress          ;
+
+        xor edx, edx                    
+
+        mov dx, OperRegOff              ; Offset for Operational Register
+        add ebx, edx                    ; USBCMD Address
+
+        
+        mov edx, fs:[ebx]               ; Gets USBCMD Register 
+        or edx, 1h                      ; Sets to one Run/Stop bit 
+        mov fs:[ebx], edx               ; Set updated value 
+
+        add ebx, USBSTSoffset           ; USB STS Address 
+
+      waitHCHaltedBit:               
+        mov eax, fs:[ebx]               ; Get USBSTS value 
+        test eax, 00001000h             ; Checking 12-th bit 
+        jnz waitHCHaltedBit             ; Wait Until HCHalted is Set   
+        
+        ;-------------------------------;
+        pop cx                          ;
+        pop ebx                         ; Recover Register 
+        pop edx                         ; 
+
+        ret 
+    
+    endp
+
+    ; Sets USBCMD (Run/Stop) zero-bit to ZERO  
+    ; Wait for 16 microframes   
+    ; 
+    ; EBX - contains Base Address 
+    stopHCinCMD proc
+
+        push edx                        ; Save Register
+        push ebx                        ; 
+        ;-------------------------------;
+
+        xor edx, edx                    
+
+        mov dx, OperRegOff              ; Offset for Operational Register
+        add ebx, edx                    ; USBCMD Base Address 
+
+        mov edx, fs:[ebx]               ; Gets USBCMD Register 
+        and edx, 0fffffffeh             ; Clears Run/Stop bit 
+        mov fs:[ebx], edx               ; Set updated value 
+        ;-------------------------------; Recover Register 
+        pop ebx                         ;
+        pop edx                         ; 
+
+        ret 
+    
+    endp 
+
+    ; Sets in AsуnchLBRegister Address of Already Created Queue Structure
+    ; 
+    ; QHAddressInMem - Address of Already Created Queue 
+    updateAsynchQueue:
+
+        push eax                        ; Saves eax
+        push ebx                        ; 
+        push edx                        ;    
+
+        xor edx, edx                    ;
+
+        mov ebx, HCBaseAddress          ; Gets Base Address Offset
+
+        mov dx, OperRegOff              ; Offset for Operational Register
+        add dx, AsуnchLBoffset          ;
+        add ebx, edx                    ; Points in AsуnchLBReg 
+
+        
+        xor eax, eax 
+
+        mov edx, dword ptr [QHAddressInMem]    
+        mov ax, ds                      ; Data Segment
+        shl eax, 4                      ; 
+
+        add eax, edx 
+        
+        mov fs:[ebx], eax               ; Point on own Queue 
+
+        pop edx 
+        pop ebx                         ; Recover 
+        pop eax 
+
+        db 0C3h                         ; ret 
+
+
+    ; Prints Transaction Dump     
+    ;    
+    ;
+    printTDArrayDump:
+
+	   push eax                        ; Saves eax
+	   push ebx                        ; 
+	   push edx   
+	   push ecx 
+	   push esi
+
+       mov cx, 1h                      
+       mov edx, [LinearQTDAddress1]  
+       ; Out 
+       ; 200Ch => 64K
+       ; 80Ch  => 16K
+       ; 20Ch  => 4K
+       ; 
+       ; IN 
+       ; 
+       add edx, 0Ch                     
+      
+      loopOverTDArray:
+        mov esi, fs:[edx]                 
+          
+        mov ebx, edx
+
+        push bx                         
+        shr ebx, 16                     
+        push bx                         
+
+        call printWordFromStackRM
+        call printWordFromStackRM 
+        
+        call printSpaceRM
+
+        push si                         
+        shr esi, 16                     
+        push si                         
+
+        call printWordFromStackRM
+        call printWordFromStackRM 
+
+        call printNewLineRM
+
+        add edx, 04h
+
+        loop loopOverTDArray            
+
+        pop esi 
+        pop ecx
+        pop edx 
+        pop ebx                         
+        pop eax 
+
+        db 0C3h                            
+
+    ; Prints Transaction Dump     
+    ;    
+    ;
+    printInBufferDump:
+
+        push eax                        ; Saves eax
+        push ebx                        ; 
+        push edx   
+        push ecx 
+        push esi
+
+        call printNewLineRM
+
+        mov cx, 08h                     ; 
+
+        mov edx, [LinearDataBufferAddress]
+      
+      loopOverInBufferArray:
+        mov esi, fs:[edx]                 
+          
+        mov ebx, edx
+
+        push bx                         
+        shr ebx, 16                     
+        push bx                         
+
+        call printWordFromStackRM
+        call printWordFromStackRM 
+        
+        call printSpaceRM
+
+        push si                         
+        shr esi, 16                     
+        push si                         
+
+        call printWordFromStackRM
+        call printWordFromStackRM 
+
+        call printNewLineRM
+
+        add edx, 04h
+
+        loop loopOverInBufferArray      
+
+
+        pop esi 
+        pop ecx
+        pop edx 
+        pop ebx                         
+        pop eax 
+
+        db 0C3h                           
+
+    ; Prints Transaction Dump     
+    ;    
+    ;
+    printOutBufferDump:
+
+        push eax                        ; Saves eax
+        push ebx                        ; 
+        push edx   
+        push ecx 
+        push esi
+
+        call printNewLineRM
+
+        mov cx, 0Bh                     
+
+        mov edx, [LinearBulkWriteBufferAddress]                             
+      
+      loopOverOutBufferArray:
+          
+          mov esi, fs:[edx]               ;
+          
+          mov ebx, edx
+
+          push bx                         ;
+          shr ebx, 16                     ;
+          push bx                         ;
+
+          call printWordFromStackRM
+        call printWordFromStackRM 
+        
+        call printSpaceRM
+
+        push si                           ;
+          shr esi, 16                     ;
+          push si                         ;
+
+        call printWordFromStackRM
+        call printWordFromStackRM 
+
+        call printNewLineRM
+
+        add edx, 04h
+
+        loop loopOverOutBufferArray      ; Loop
+
+
+        pop esi 
+        pop ecx
+        pop edx 
+        pop ebx                          ; Recover 
+        pop eax 
+
+        db 0C3h                          ; ret 
+
+
+
+    ; Init Space for Queue Structures  
+    ; 
+    InitializeQueueSpace proc near 
+        
+        pushad
+
+        ;----------------------------;
+        ; Linear Address 
+        xor eax, eax 
+        mov ax, ds
+        shl eax, 4
+        mov edx, eax                 ; Remember Segment 
+        xor eax, eax
+        xor ebx, ebx 
+        mov bx, offset FrameListBase ; Address 
+        add    ebx, edx
+        and    ebx, 0FFFFF000h
+        add    ebx, 1000h            ; 4Kb alignment
+        sub    ebx, edx
+        mov FrameListBaseAddr, bx    ; Non-Linear Address 
+        
+        ; Data Buffer Linear Address
+        xor eax, eax 
+        xor ebx, ebx
+        lea bx, DataBuffer
+        ; В edx адрес сегмента
+        add ebx, edx
+        and    ebx, 0FFFFF000h
+        add    ebx, 1000h             ; 4Kb alignment
+        mov [LinearDataBufferAddress], ebx ; Linear Address  
+
+        xor  eax, eax 
+        xor ebx, ebx
+
+        ; В edx адрес сегмента
+        lea bx, WriteBuffer
+        add ebx, edx
+        and    ebx, 0FFFFF000h
+        add    ebx, 1000h                        ; 4KB boarder
+        mov [LinearWriteBufferAddress], ebx    ; Linear Address
+        mov [LinearBulkWriteBufferAddress], ebx
+
+        ; Calculate Buffer Address For Test Data Transfer
+        xor ebx, ebx 
+        lea bx, WriteBulkTestTransfer
+        add ebx, edx 
+        and ebx, 0FFFFF000h
+        add ebx, 1000h
+        mov [LinearBulkTestTransferAddress], ebx      
+        
+        xor    ebx, ebx
+        mov bx, FrameListBaseAddr
+        add    ebx, 4096
+        mov [QHAddressInMem], ebx       ; Non Linear Queue Head Address
+                                           
+        mov    eax, ebx                 ; Calculate Pointer in qTD Array 
+        add    eax, 40h
+        and    eax, 0FFFFFFF0h
+        mov [QTDAddress1], eax          ; Non Linear Address of first qTD
+       
+        xor edx, edx                    ; Linear Address
+        mov dx, ds                      ;
+        shl edx, 4                      ; 
+        add edx, eax                    ;
+        mov [LinearQTDAddress1], edx    ;
+
+        popad
+        
+        db 0C3h
+
+    endp
+
+    ; Waits for qTD Status Change 
+    ; 
+    detectStateChange proc
+
+        push edx                        ; Save Register
+        push ebx                        ; 
+        push ax                         ;
+        ;-------------------------------;
+
+        mov ebx, [LinearQTDAddress1]    ; Gets Base Address
+        add ebx, 8                      ; 
+        
+      waitStatusChange:
+
+        mov edx, fs:[ebx]                
+        cmp dl, qTDActiveStatus         
+        
+        jz waitStatusChange
+
+        ;-------------------------------;
+        pop ax                          ; Recover Register 
+        pop ebx                         ;
+        pop edx                         ; 
+
+        ret 
+    
+    endp
+
+    ; Waits for qTD Status Change 
+    ; 
+    detectStateChangeControl proc
+
+        push edx                        ; Save Register
+        push ebx                        ; 
+        push eax                        ;
+        ;-------------------------------;
+
+        mov ebx, [LinearQTDAddress1]    ; Gets Base Address
+        add ebx, 8                      ; 
+        xor eax, eax 
+        
+      waitStatusChangeControl:
+
+          cmp eax, 10000000h
+        jge detectStateChangeControlOut
+        inc eax                         
+        mov edx, fs:[ebx]                
+        cmp dl, qTDActiveStatus         
+        
+        jz waitStatusChangeControl
+      
+      detectStateChangeControlOut:
+    
+        ;-------------------------------;
+        pop eax                         ; Recover Register 
+        pop ebx                         ;
+        pop edx                         ; 
+
+        ret 
+    
+    endp
+
+    ; Waits for qTD Status Change 
+    ; 
+    detectStateChangeControl2 proc
+
+        push edx                        ; Save Register
+        push ebx                        ; 
+        push eax                        ;
+        ;-------------------------------;
+
+        mov ebx, [LinearQTDAddress1]    ; Gets Base Address
+        add ebx, 088h                   ; 
+        xor eax, eax 
+        
+      waitStatusChangeControl2:
+
+          cmp eax, 10000000h
+        jge detectStateChangeControlOut2
+        inc eax                         
+        mov edx, fs:[ebx]               ;
+        cmp dl, qTDActiveStatus         ;
+        
+        jz waitStatusChangeControl2
+      
+      detectStateChangeControlOut2:
+    
+        ;-------------------------------;
+        pop eax                         ; Recover Register 
+        pop ebx                         ;
+        pop edx                         ; 
+
+        ret 
+    
+    endp     
+
+endm
