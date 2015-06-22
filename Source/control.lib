@@ -1,0 +1,844 @@
+initControlLib macro
+
+; =====================================================================================================
+; qTD Offsets
+
+qTDTokenOffset           = 08h
+
+; =====================================================================================================
+; qTD Status CONSTS 
+
+qTDActiveStatus          = 80h
+qTDHaltedStatus          = 40h
+qTDBufferErrorStatus     = 20h
+qTDBabbleStatus          = 10h
+qTDTransErrorStatus      = 08h
+qTDMisddedMFStatus       = 04h 
+qTDSplitTransStatus      = 02h
+qTDPingStateStatus       = 01h 
+qTDOKStatus              = 00h
+
+qTDSetupTokenType        = 10b
+qTDInTokenType           = 01b
+qTDOutTokenType          = 00b 
+
+; =====================================================================================================
+; qTD Status Descriptions     
+
+qTDActiveMsg            db "qTD is Active $"
+qTDHaltedMsg            db "qTD is Halted $"
+qTDBufferErrorMsg       db "qTD Buffer Error $"
+qTDBabbleMsg            db "qTD Babble Detected $"
+qTDTransErrorMsg        db "qTD Transaction Error $"
+qTDMisddedMFMsg         db "qTD Missed Micro-Frame $"
+qTDSplitTransMsg        db "qTD Split Transaction State $"
+qTDPingStateMsg         db "qTD Ping State $"
+qTDOkStateMsg           db "qTD is OK $"
+
+qTDSetupTokenMsg        db "Setup Token $"
+qTDInTokenMsg           db "In Token    $"
+qTDOutTokenMsg          db "Out Token   $"
+
+; =====================================================================================================
+; Device Descriptor (DD) fields
+
+DDbLength                   db 0h
+DDbDescriptorType           db 0h
+DDbcdUSB                    dw 0h
+DDbDeviceClass              db 0h 
+DDbDeviceSubclass           db 0h 
+DDbDeviceProtocol           db 0h 
+DDbMaxPacketSize            db 0h
+DDidVendor                  dw 0h 
+DDidProduct                 dw 0h 
+DDbcdDevice                 dw 0h 
+DDiManufacturer             db 0h
+DDiProduct                  db 0h
+DDiSerialNumber             db 0h 
+DDbNumConfigurations        db 0h 
+
+; =====================================================================================================
+; Device Descriptor Strings
+
+DDbDescriptorTypeMsg        db "Descriptor (0x01)    = $"
+DDbcdUSBMsg                 db "USB Specification    = $"
+DDbDeviceClassMsg           db "Device Class         = $"
+DDbDeviceSubclassMsg        db "Device Subclass      = $"
+DDbDeviceProtocolMsg        db "Device Protocol      = $"
+DDbMaxPacketSizeMsg         db "Max Packet Size      = $"
+
+; =====================================================================================================
+; Hub Descriptor (HD) fields
+
+HDbLength                   db 0h
+HDbDescriptorType           db 0h
+HDbNbrPorts                 db 0h 
+HDwHubCharact               dw 0h 
+
+; =====================================================================================================
+; Hub Descriptor (HD) strings 
+
+HDbDescriptorTypeMsg        db "Descriptor (0x29)   = $"
+HDbNbrPortsMsg              db ", Ports = $"
+
+; =====================================================================================================
+; Configuration Descriptor (CD) fields
+
+CDbLength                   db 0h
+CDbDescriptorType           db 0h
+CDwTotalLength              dw 0h
+CDbNumInterfaces            db 0h
+CDbConfigValue              db 0h
+CDiConfiguration            db 0h 
+CDbAttributes               db 0h 
+CDbMaxPower                 db 0h 
+
+; =====================================================================================================
+; Configuration Descriptor (CD) strings 
+
+sCDMsg                      db "Configuration Descriptor:", 13, 10, "$"
+CDbDescriptorTypeMsg        db "bDescriptor (0x02)   = $"
+CDwTotalLengthMsg           db "wTotalLength         = $"
+CDbNumInterfacesMsg         db "bNumInterfaces       = $"
+CDbConfigValueMsg           db "bConfigurationValue  = $"
+CDiConfigurationMsg         db "iConfiguration       = $"
+CDbAttributesMsg            db "bmAttributes         = $"
+CDbMaxPowerMsg              db "bMaxPower            = $"
+
+; =====================================================================================================
+; Infterface Descriptor (ID) fields
+
+IDbLength                  db 0h
+IDbDescriptorType          db 0h
+IDbInterfaceNumber         db 0h
+IDbAlternativeSettings     db 0h
+IDbNumEndpoints            db 0h
+IDbInterfaceClass          db 0h 
+IDbInterfaceSubClass       db 0h 
+IDbInterfaceProtocol       db 0h 
+IDiInterface               db 0h 
+
+; =====================================================================================================
+; Configuration Descriptor (CD) strings 
+
+sIDMsg                     db "Interface Descriptor:", 13, 10, "$"
+IDbDescriptorTypeMsg       db "bDescriptor (0x04)   = $"
+IDbInterfaceNumberMsg      db "bInterfaceNumber     = $"
+IDbAlternativeSettingsMsg  db "bAlternativeSettings = $"
+IDbNumEndpointsMsg         db "bNumEndpoints        = $"
+IDbInterfaceClassMsg       db "bInterfaceClass      = $" 
+IDbInterfaceSubClassMsg    db "bInterfaceSubClass   = $" 
+IDbInterfaceProtocolMsg    db "bInterfaceProtocol   = $" 
+IDiInterfaceMsg            db "iInterface           = $" 
+
+; =====================================================================================================
+; In Endpoint Descriptor (ED) fields
+
+EDInbLength               db 0h
+EDInbDescriptorType       db 0h
+EDInEndpointAddress       db 0h
+EDInbmAttributes          db 0h
+EDInMaxPacketSize         dw 0h
+EDInbInterval             db 0h 
+
+; =====================================================================================================
+; Out Endpoint Descriptor (ED) fields
+
+EDOutbLength             db 0h
+EDOutbDescriptorType     db 0h
+EDOutEndpointAddress     db 0h
+EDOutbmAttributes        db 0h
+EDOutMaxPacketSize       dw 0h
+EDOutbInterval           db 0h 
+
+; =====================================================================================================
+; Print Buffer 
+; 
+PrintBuffer db 64 DUP(0)
+            db 13,10,"$" 
+
+; =====================================================================================================
+; 09h | 00h | 00h => Class | Subclass | Protocol => Full speed Hub
+; 09h | 00h | 01h => Class | Subclass | Protocol => Hi-speed hub with single TT
+; 09h | 00h | 02h => Class | Subclass | Protocol => Hi-speed hub with multiple TTs
+; =====================================================================================================
+    
+    ; Prints information about qTD Status
+    ;
+    printQTDStatus proc near
+
+        push ebx                ; Save ebx
+        push edx                ; 
+        push eax                ;
+        ;------------------------
+
+        ; Announce Message Status  
+        mov ebx, [QTDAddress1]    
+        mov eax, [ebx + qTDTokenOffset]
+        
+        cmp al,    qTDOKStatus 
+        jz outprintQTDStatus
+
+        call printNewLineRM    
+
+        ; Announce Message type 
+        mov ebx, [QTDAddress1]    
+        mov eax, [ebx + qTDTokenOffset]
+        shr eax, 8
+        and al, 3h                ; Sets Only PID   
+
+        cmp al, qTDSetupTokenType
+        jz fillQTDSetupToken
+
+        cmp al, qTDInTokenType
+        jz fillQTDInToken
+
+        cmp al, qTDOutTokenType
+        jz fillQTDOutToken
+
+      fillQTDSetupToken:
+          lea dx, qTDSetupTokenMsg
+          jmp checkQTDStatus
+
+      fillQTDInToken:
+          lea dx, qTDInTokenMsg
+          jmp checkQTDStatus
+
+      fillQTDOutToken:
+          lea dx, qTDOutTokenMsg
+          jmp checkQTDStatus    
+  
+      checkQTDStatus:
+
+          mov ah, 09h             
+          int 21h 
+
+          lea dx, space 
+          int 21h 
+        
+        ; Announce Message Status  
+        mov ebx, [QTDAddress1]    
+        mov eax, [ebx + qTDTokenOffset]
+
+        cmp al,    qTDActiveStatus 
+        jz fillQTDActive
+
+        cmp al,    qTDHaltedStatus
+        jz fillQTDHalted
+
+        cmp al,    qTDBufferErrorStatus
+        jz fillBufferError
+        
+        cmp al, qTDBabbleStatus
+        jz fillQTDBabble
+
+        cmp al,    qTDTransErrorStatus 
+        jz fillQTDTransError
+        
+        cmp al, qTDMisddedMFStatus
+        jz fillQTDMisddedMF    
+
+        cmp al, qTDSplitTransStatus
+        jz fillQTDSplitTrans    
+        
+        cmp al, qTDPingStateStatus
+        jz fillQTDPingState
+
+        cmp al,    qTDOKStatus 
+        jz fillQTDOK          
+      
+      fillQTDActive:
+          lea dx, qTDActiveMsg    ; Msg for qTD Active 
+          jmp exitPrintQTDStatus  ;
+
+      fillQTDHalted:
+          lea dx, qTDHaltedMsg
+        jmp exitPrintQTDStatus
+      
+      fillBufferError:
+          lea dx, qTDBufferErrorMsg
+        jmp exitPrintQTDStatus
+
+      fillQTDBabble:
+          lea dx, qTDBabbleMsg
+        jmp exitPrintQTDStatus
+
+      fillQTDTransError:
+          lea dx, qTDTransErrorMsg; Msg for qTD qTDTransErrorMsg
+          jmp exitPrintQTDStatus  ;
+
+      fillQTDMisddedMF:
+          lea dx, qTDMisddedMFMsg
+        jmp exitPrintQTDStatus
+      
+      fillQTDSplitTrans:
+        lea dx, qTDSplitTransMsg
+        jmp exitPrintQTDStatus
+
+      fillQTDPingState:
+        lea dx, qTDPingStateMsg
+        jmp exitPrintQTDStatus
+      
+      fillQTDOK:
+          lea dx, qTDOkStateMsg   ; Msg for qTD Active 
+          jmp exitPrintQTDStatus  ;
+
+      exitPrintQTDStatus:
+          
+          mov ah, 09h             ;
+          int 21h 
+
+          call printNewLineRM
+    
+    outprintQTDStatus:
+
+        ;-----------------------;
+        pop eax                 ; 
+        pop edx                 ;
+        pop ebx                 ;
+
+        db 0C3h                 ; ret 
+
+    endp
+
+    ; Fills fields of Device Descriptor in mem 
+    ; 
+    ; ESI - Linear Address of Buffer where Device Descriptor is stored
+    retrieveDeviceDescriptor proc near 
+
+        push ebx                   ; Save ebx
+        push edx                ; 
+        push eax                ;
+        ;------------------------
+        
+        xor eax, eax             ;
+        lea eax, DDbLength       ; 
+
+        mov ebx, fs:[esi]        ;
+        mov [eax], ebx           ; 
+        mov ebx, fs:[esi + 4]    ;
+        mov [eax + 4], ebx       ; 
+        mov ebx, fs:[esi + 8]    ;
+        mov [eax + 8], ebx       ;
+
+        ;-----------------------;
+        pop eax                 ; 
+        pop edx                 ;
+        pop ebx                 ;
+
+        ret 
+
+    endp
+
+    ; Prints Device Descriptor fields 
+    ;
+    printDeviceDescriptor proc near
+        
+        push ebx                ; Save ebx
+        push edx                ; 
+        push eax                ;
+        ;------------------------
+
+        ; bDescriptorType
+        mov ah, 09h                
+        lea dx, DDbDescriptorTypeMsg
+        int 21h 
+        xor bx, bx 
+        mov bl, [DDbDescriptorType]
+        push bx 
+        call printWordFromStackRM
+        call printSpaceRM
+
+        ; bcdUSB
+        mov ah, 09h                
+        lea dx, DDbcdUSBMsg
+        int 21h 
+        xor bx, bx
+        mov bx, [DDbcdUSB]
+        push bx 
+        call printWordFromStackRM
+        call printNewLineRM
+
+        ; bDeviceClass
+        mov ah, 09h                
+        lea dx, DDbDeviceClassMsg
+        int 21h 
+        xor bx, bx 
+        mov bl, [DDbDeviceClass]
+        push bx 
+        call printWordFromStackRM
+        call printSpaceRM
+
+        ; bMaxPacketSize
+        mov ah, 09h                
+        lea dx, DDbMaxPacketSizeMsg
+        int 21h 
+        xor bx, bx
+        mov bl, [DDbMaxPacketSize]
+        push bx 
+        call printWordFromStackRM
+        call printNewLineRM
+
+        ; bDeviceSubclass
+        mov ah, 09h                
+        lea dx, DDbDeviceSubclassMsg
+        int 21h 
+        xor bx, bx 
+        mov bl, [DDbDeviceSubclass]
+        push bx 
+        call printWordFromStackRM
+        call printSpaceRM
+
+        ; bDeviceProtocol
+        mov ah, 09h                
+        lea dx, DDbDeviceProtocolMsg
+        int 21h 
+        xor bx, bx
+        mov bl, [DDbDeviceProtocol]
+        push bx 
+        call printWordFromStackRM
+        call printNewLineRM
+
+        ;-----------------------;
+        pop eax                 ; 
+        pop edx                 ;
+        pop ebx                 ;
+
+        ret 
+
+    endp
+
+    ; Fills fields of Hub Descriptor in mem 
+    ; 
+    ; ESI - Linear Address of Buffer where Hub Descriptor is stored
+    retrieveHubDescriptor proc near 
+
+        push ebx                   ; Save ebx
+        push edx                ; 
+        push eax                ;
+        ;------------------------
+        
+        xor eax, eax             ;
+        lea eax, HDbLength       ; 
+
+        mov bx, word ptr fs:[esi]
+        mov [eax], bx               
+        mov bl, byte ptr fs:[esi + 2]
+        mov [eax + 2], bl
+        mov bx, word ptr fs:[esi + 3]
+        mov [eax + 3], bx
+        
+        ;-----------------------;
+        pop eax                 ; 
+        pop edx                 ;
+        pop ebx                 ;
+
+        ret 
+
+    endp
+
+    ; Prints Hub Descriptor fields 
+    ;
+    printHubDescriptor proc near
+        
+        push ebx                ; Save ebx
+        push edx                ; 
+        push eax                ;
+        ;------------------------
+
+        ; bDescriptorType
+        ;mov ah, 09h                
+        ;lea dx, HDbDescriptorTypeMsg
+        ;int 21h 
+        ;xor bx, bx 
+        ;mov bl, [HDbDescriptorType]
+        ;push bx 
+        ;call printWordFromStackRM
+        ;call printSpaceRM
+
+        ; HDbNbrPortsMsg
+        mov ah, 09h                
+        lea dx, HDbNbrPortsMsg
+        int 21h 
+        xor bx, bx
+        mov bl, [HDbNbrPorts]
+        push bx 
+        call printByteFromStackRM
+        call printNewLineRM
+        
+        ;-----------------------;
+        pop eax                 ; 
+        pop edx                 ;
+        pop ebx                 ;
+
+        ret 
+
+    endp  
+    
+    ; Fills fields of Configuration Descriptor in mem 
+    ; 
+    ; ESI - Linear Address of Buffer where Configuration Descriptor is stored
+    retrieveConfigDescriptorSmall proc near 
+
+        push ebx                ; Save ebx
+        push edx                ; 
+        push eax                ;
+        ;------------------------
+        
+        xor eax, eax             ;
+        lea eax, CDbLength       ; 
+
+        mov ebx, fs:[esi]        ;
+        mov [eax], ebx           ; 
+        mov ebx, fs:[esi + 4]    ;
+        mov [eax + 4], ebx       ; 
+        mov bl, fs:[esi + 8]     ;
+        mov [eax + 8], bl        ;
+
+        ;-----------------------;
+        pop eax                 ; 
+        pop edx                 ;
+        pop ebx                 ;
+
+        ret 
+
+    endp
+
+    ; Fills fields of Interface and Endpoint Descriptors  
+    ; 
+    ; ESI - Linear Address of Buffer where Descriptors are stored
+    retrieveConfigDescriptorFull proc near 
+
+        push ebx                ; Save ebx
+        push edx                ; 
+        push eax                ;
+        push esi                ;
+        push cx                 ;
+        ;------------------------
+        
+        ; Get Number of Device Interfaces 
+        mov bl, [CDbNumInterfaces]
+        cmp bl, 0h 
+        jz retrieveConfigDescriptorFull
+        
+        ; Load Interface Descriptor
+        xor eax, eax             ;
+        lea eax, IDbLength
+        xor edx, edx 
+        mov dl, [CDbLength]     ; Add Configuration Descriptor Displacement
+        add esi, edx            ; 
+        mov ebx, fs:[esi]        
+        mov [eax], ebx             
+        mov ebx, fs:[esi + 4]    
+        mov [eax + 4], ebx          
+        mov bl, fs:[esi + 8]    
+        mov [eax + 8], bl         
+        
+        ; Get Number Of Endpoints 
+        xor edx, edx 
+        mov dl, [IDbLength]     ; Add Interface Descriptor Displacement
+        add esi, edx            ; 
+        
+        xor cx, cx 
+        mov cl, [IDbNumEndpoints]
+  
+      fillEndpointInfoInStorage:      
+         
+        xor dx, dx              ; 
+        mov dl, fs:[esi + 2]    ; Endpoint Address
+        test dl, 80h            ; Check in Endpoint                    
+        jnz chooseInEndpoint    ; 
+        
+        lea eax, EDOutbLength   ; 
+           
+           jmp fillEndpointInfo
+       
+       chooseInEndpoint:
+        
+        lea eax, EDInbLength    ;
+       
+       fillEndpointInfo:
+        
+        mov ebx, fs:[esi]       ;
+        mov [eax], ebx          ; 
+        mov bx, fs:[esi + 4]    ;
+        mov [eax + 4], bx       ; 
+        mov bl, fs:[esi + 6]    ;
+        mov [eax + 6], bl       ; 
+        add esi, 07h            ; Endpoint Descriptor Length 
+
+        loop fillEndpointInfoInStorage  
+        
+        ;-----------------------;
+        pop cx                  ;
+        pop esi                 ;
+        pop eax                 ; 
+        pop edx                 ;
+        pop ebx                 ;
+
+        ret 
+
+    endp
+
+    ; Prints Configuration Descriptor fields 
+    ;
+    printConfigDescriptor proc near
+        
+        push ebx                ; Save ebx
+        push edx                ; 
+        push eax                ;
+        ;------------------------
+        
+        ; Format Output Style 
+        inc [TreeLevel]
+        
+        call printFormatStepRM
+        mov ah, 09h
+        lea dx, sCDMsg
+        int 21h 
+
+        ; bDescriptorType
+        call printFormatStepRM
+        mov ah, 09h                
+        lea dx, CDbDescriptorTypeMsg
+        int 21h 
+        xor bx, bx 
+        mov bl, [CDbDescriptorType]
+        push bx 
+        call printByteFromStackRM
+        call printNewLineRM
+
+        ; CDwTotalLength
+        call printFormatStepRM
+        mov ah, 09h                
+        lea dx, CDwTotalLengthMsg
+        int 21h 
+        xor bx, bx
+        mov bx, [CDwTotalLength]
+        push bx 
+        call printWordFromStackRM
+        call printNewLineRM
+
+        ; CDbNumInterfaces
+        call printFormatStepRM
+        mov ah, 09h                
+        lea dx, CDbNumInterfacesMsg
+        int 21h 
+        xor bx, bx
+        mov bl, [CDbNumInterfaces]
+        push bx 
+        call printByteFromStackRM
+        call printNewLineRM
+        
+        ; CDbConfigValue
+        call printFormatStepRM
+        mov ah, 09h                
+        lea dx, CDbConfigValueMsg
+        int 21h 
+        xor bx, bx
+        mov bl, [CDbConfigValue]
+        push bx 
+        call printByteFromStackRM
+        call printNewLineRM
+
+        ; CDiConfiguration
+        call printFormatStepRM
+        mov ah, 09h                
+        lea dx, CDiConfigurationMsg
+        int 21h 
+        xor bx, bx
+        mov bl, [CDiConfiguration]
+        push bx 
+        call printByteFromStackRM
+        call printNewLineRM
+
+        ; CDbAttributes
+        call printFormatStepRM
+        mov ah, 09h                
+        lea dx, CDbAttributesMsg
+        int 21h 
+        xor bx, bx
+        mov bl, [CDbAttributes]
+        push bx 
+        call printByteFromStackRM
+        call printNewLineRM
+
+        ; CDbMaxPower
+        call printFormatStepRM
+        mov ah, 09h                
+        lea dx, CDbMaxPowerMsg
+        int 21h 
+        xor bx, bx
+        mov bl, [CDbMaxPower]
+        push bx 
+        call printByteFromStackRM
+        call printNewLineRM
+
+        ; Format Output Style 
+        dec [TreeLevel]
+        ;-----------------------;
+        pop eax                 ; 
+        pop edx                 ;
+        pop ebx                 ;
+
+        ret 
+
+    endp 
+
+    ; Prints Configuration Descriptor fields 
+    ;
+    printInterfaceDescriptor proc near
+        
+        push ebx                ; Save ebx
+        push edx                ; 
+        push eax                ;
+        ;------------------------
+        
+        ; Format Output Style 
+        inc [TreeLevel]
+        
+        ; Interface Descriptor
+        call printFormatStepRM
+        mov ah, 09h
+        lea dx, sIDMsg
+        int 21h 
+        
+        ; IDbDescriptorType
+        call printFormatStepRM
+        mov ah, 09h                
+        lea dx, IDbDescriptorTypeMsg
+        int 21h 
+        xor bx, bx
+        mov bl, [IDbDescriptorType]
+        push bx 
+        call printByteFromStackRM
+        call printNewLineRM
+
+        ; IDbInterfaceNumber
+        call printFormatStepRM
+        mov ah, 09h                
+        lea dx, IDbInterfaceNumberMsg
+        int 21h 
+        xor bx, bx
+        mov bl, [IDbInterfaceNumber]
+        push bx 
+        call printByteFromStackRM
+        call printNewLineRM
+
+        ; IDbAlternativeSettings
+        call printFormatStepRM
+        mov ah, 09h                
+        lea dx, IDbAlternativeSettingsMsg
+        int 21h 
+        xor bx, bx
+        mov bl, [IDbAlternativeSettings]
+        push bx 
+        call printByteFromStackRM
+        call printNewLineRM
+
+        ; IDbNumEndpoints
+        call printFormatStepRM
+        mov ah, 09h                
+        lea dx, IDbNumEndpointsMsg
+        int 21h 
+        xor bx, bx
+        mov bl, [IDbNumEndpoints]
+        push bx 
+        call printByteFromStackRM
+        call printNewLineRM
+
+        ; IDbInterfaceClass
+        call printFormatStepRM
+        mov ah, 09h                
+        lea dx, IDbInterfaceClassMsg
+        int 21h 
+        xor bx, bx
+        mov bl, [IDbInterfaceClass]
+        push bx 
+        call printByteFromStackRM
+        call printNewLineRM
+
+        ; IDbInterfaceSubClass
+        call printFormatStepRM
+        mov ah, 09h                
+        lea dx, IDbInterfaceSubClassMsg
+        int 21h 
+        xor bx, bx
+        mov bl, [IDbInterfaceSubClass]
+        push bx 
+        call printByteFromStackRM
+        call printNewLineRM
+
+        ; IDbInterfaceProtocol
+        call printFormatStepRM
+        mov ah, 09h                
+        lea dx, IDbInterfaceProtocolMsg
+        int 21h 
+        xor bx, bx
+        mov bl, [IDbInterfaceProtocol]
+        push bx 
+        call printByteFromStackRM
+        call printNewLineRM
+
+        ; IDiInterface
+        call printFormatStepRM
+        mov ah, 09h                
+        lea dx, IDiInterfaceMsg
+        int 21h 
+        xor bx, bx
+        mov bl, [IDiInterface]
+        push bx 
+        call printByteFromStackRM
+        call printNewLineRM
+        
+        ; Format Output Style 
+        dec [TreeLevel]
+        
+        ;-----------------------;
+        pop eax                 ; 
+        pop edx                 ;
+        pop ebx                 ;
+
+        ret 
+
+    endp 
+
+    ; Prints String Descriptor
+    ; 
+    ; ESI - Linear Address of Buffer where String Descriptor is stored
+    printStringDescriptor proc near
+        
+        push ecx                ; Save ebx
+        push edx                ; 
+        push eax                ;
+        ;------------------------
+        
+        lea edx, PrintBuffer        
+        mov cx, 32  
+
+        ;Prints Unicode Chars
+
+      printStringDescriptorLoop:
+        
+        mov ax, word ptr fs:[esi]
+        mov [edx], ax 
+        add edx, 2
+        add esi, 2  
+
+        loop printStringDescriptorLoop 
+
+        mov ah, 09h                
+        lea dx, PrintBuffer
+        add dx, 2
+        int 21h 
+        
+        ;-----------------------;
+        pop eax                 ; 
+        pop edx                 ;
+        pop ecx                 ;
+
+        ret 
+
+    endp   
+
+endm
