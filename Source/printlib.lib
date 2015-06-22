@@ -1,0 +1,612 @@
+initPrint    macro
+
+; =====================================================================================================
+; Translation Table    
+
+hex_table db "0123456789ABCDEF"
+newline   db " ", 13, 10, "$"
+space     db " : $"
+formatStep db "  $"
+
+; =====================================================================================================
+
+PortValue:
+
+    dd 00h
+    dd 00h
+    dd 00h 
+    dd 00h
+    dd 00h  
+    dd 00h 
+
+; =====================================================================================================
+; String CONSTS 
+
+usb_00    db 'UHCI (0x$'
+usb_10    db 'OHCI (0x$'
+usb_20    db 'EHCI (0x$'
+usb_30    db 'xHCI (0x$'
+usb_dummy db '  Host Controller is not supported', 13, 10, '$'
+sBusMsg      db ', Bus = $'
+sBraket      db ')', 13, 10, '$'
+
+; =====================================================================================================
+
+
+    ; Prints string while (charToPrint != '$')
+    ;
+    ; DS - data segment   pointer
+    ; ES - screen segment pointer
+    ; BX - offset in printing string
+    ; DI - offset for printing string in Video Mem
+    printStrPM proc near
+
+        push ax             ; Save AX
+        
+        mov    ah, 05h            ; Print style
+    
+    putChar:
+
+        mov al, [bx]        ; Get char to print
+        cmp al, '$'         ;
+        jz outPutChar       ; Stop printing
+        add bx, 1           ;
+        mov es:[di], ax     ; Puts char & font in video mem
+        add di, 2           ; Points to next place in video mem
+
+        jmp putChar         ;  
+    
+    outPutChar:
+        
+        pop ax              ; Recover AX
+        ret                 ;
+    
+    endp
+
+    ; Function, which prints Word(16-bit) from Stack     
+    ; Working in Real Mode only
+    ;
+    ; AX, BX are changed
+    printWordFromStackRM proc near
+
+        xor  eax, eax          ; Clear
+        pop  bx                ; Pop ret address
+        pop  ax                ; Pop print value
+        push bx                ; Push ret value
+        push dx                ; Save DX
+        push di                ; Save DI
+        push si                ; Save SI
+        push cx                ; Save CX
+        mov di, ax             ; Storage for value to print
+        mov cx, 4              ; Cycle counter
+        lea bx, hex_table      ; Load in bx char table
+        mov si, 12             ; Shift counter
+
+      cyclePWFSRM:
+        
+        mov ax, di             ; Set default value
+        push cx                ; Save counter
+        mov cx, si             ; Shift value
+        shr ax, cl             ; Shift
+        and ax, 0Fh            ; Set digit alone
+        xlat                   ; Translate
+        mov dl, al             ; Result to DL 
+        mov ah, 02h            ; Print char code
+        int 21h                ; 
+        sub si, 4              ;
+        pop cx                 ;
+        
+        loop cyclePWFSRM       ;
+    
+        pop cx                 ; Restore registers
+        pop si                 ;
+        pop di                 ;
+        pop dx                 ;
+        ret                    ;
+
+    endp
+
+    ; Function, which prints Word(16-bit) from Stack     
+    ; Working in Protected Mode 
+    ; 
+    ; ES - screen segment pointer
+    ; DI - offset for printing in Video Memory 
+    ; 
+    ; AX, BX are changed
+    ; DI changed (correct offset for print should be saved)
+    printWordFromStackPM proc near
+
+        pop bx                 ; ret address
+        pop ax                 ; Word to Print
+        
+        push bx                ; Push ret address
+        push ecx               ; Save ecx
+        
+        mov cx, ax             ; CX - saver for original number
+        lea bx, hex_table      ; Loads hex table for translation
+        sub bx, offset DATA_SEG_START; Points to hex_table start (in PM)
+
+        ; First digit
+        shr ax, 12             ; Set alone digit
+        xlat                   ; Translates
+        mov ah, 05h            ; Style for Video Memory
+        mov es:[di], ax        ;
+        add di, 2              ; Points to the next place
+        
+        ; Second digit
+        mov ax, cx             ; 
+        shr ax, 8              ;
+        and ax, 0Fh            ; Set alone digit
+        xlat                   ; Translates                  
+        mov ah, 05h            ; Style for Video Memory
+        mov es:[di], ax        ;
+        add di, 2              ; Points to the next place
+        
+        ; Third digit
+        mov ax, cx             ; 
+        shr ax, 4              ;
+        and ax, 0Fh            ; Set alone digit
+        xlat                   ; Translates                  
+        mov ah, 05h            ; Style for Video Memory
+        mov es:[di], ax        ;
+        add di, 2              ; Points to the next place
+        
+        ; Fourth digit
+        mov ax, cx             ; 
+        and ax, 0Fh            ; Set alone digit
+        xlat                   ; Translates                  
+        mov ah, 05h            ; Style for Video Memory
+        mov es:[di], ax        ;
+        add di, 2              ; Points to the next place
+        
+        pop ecx                ;
+    
+        ret                    ;
+
+    endp
+
+    ; Function, which prints Byte (8-bit) from Stack
+    ; Working in Real Mode only
+    ; HEX - table is 
+    printByteFromStackRM proc near
+        
+        xor eax, eax           ;
+        pop bx                 ; pop 'ret' address
+        pop ax                 ; pop print value
+        push bx                ; save 'ret; address
+        push dx                ; save 
+        push di                ; save
+        mov di, ax             ; Storage for print value
+        lea bx, hex_table      ; Translation table
+    
+        shr ax, 4              ; Set digit alone
+        xlat                   ; Translate
+        mov dl, al             ; Move result to dl
+        mov ah, 02h            ; Print char
+        int 21h                ;
+    
+        mov ax, di             ; Default value
+        and ax, 0Fh            ; Set digit alone
+        xlat                   ; Translate
+        mov dl, al             ; Move result to dl
+        mov ah, 02h            ; Print char
+        int 21h                ;
+    
+        pop di                 ; Recover
+        pop dx                 ;
+        ret                    ;
+    
+    endp
+    
+    ; Prints CRLF escape codes  
+    ;
+    printNewLineRM proc near
+
+        push ax                 ; Save Registers 
+        push dx 
+
+        mov ah, 09h             ; Print String Function 
+        lea dx, newline         ; DX - address of new line string 
+        int 21h                 ; MS-DOS call 
+
+        pop dx                  ; Recover Registers
+        pop ax 
+
+        ret
+
+    endp
+
+    ; Prints format Step  
+    ;
+    printFormatStepRM proc near
+
+        push ax                 ; Save Registers 
+        push dx                 ;
+        push cx                 ; 
+        ;-----------------------;
+
+        mov cx, [TreeLevel]
+
+      loopFormateStep:
+
+        mov ah, 09h             ; Print String Function 
+        lea dx, formatStep      ; DX - address of new line string 
+        int 21h                 ; MS-DOS call
+
+        loop loopFormateStep 
+        
+        ;-----------------------;
+        pop cx                  ;
+        pop dx                  ; Recover Registers
+        pop ax 
+
+        ret
+
+    endp
+
+    ; Prints space with delimeter  
+    ;
+    printSpaceRM proc near
+
+        push ax                 ; Save Registers 
+        push dx 
+
+        mov ah, 09h             ; Print String Function 
+        lea dx, space           ; DX - address of new line string 
+        int 21h                 ; MS-DOS call 
+
+        pop dx                  ; Recover Registers
+        pop ax 
+
+        ret
+
+    endp
+
+    ; Retrieves information about HC Ports from PORTSC Registers  
+    ;
+    printPORTSCinfo proc near
+
+        push ebx                 ; Save Registers  
+        push eax                 ; 
+        push ecx                 ;
+        push edi                 ;
+        ;------------------------;
+
+        mov edi, HCBaseAddress     ; Base Address For HC 
+
+        add edi, HCSPARAMSoffset ; 
+        mov ecx, fs:[edi]         ; HCPARAMS Register in ecx 
+        and ecx, 000Fh              ; Set only N_PORTS Value 
+        
+                                 ; CX - contains number of ports 
+
+        lea ebx, PortValue       ; Storage for ports values                         
+        xor eax, eax              ;    
+        
+        mov ax, OperRegOff
+        mov edi, HCBaseAddress   ; 
+        add edi, eax               ; Pointer to Operational Registers
+        add edi, PORTSCoffset      ; 
+                                 ; Counter = N_PORTS
+        mov cx, 7
+
+      loopOnPORTs:
+
+          mov eax, fs:[edi]         ; PORTSC value 
+          mov [ebx], eax             ;
+                                   ; Moves to the next register
+          add edi, 04h             ; 32-bit step 
+          add ebx, 04h             
+
+          loop loopOnPORTs       ; Loop 
+
+          call invokePortPrinter ; 
+
+        ;------------------------;
+        pop edi                  ;
+        pop ecx                  ; 
+        pop eax                  ; Recover edi
+        pop ebx                  ; Recover ebx 
+
+        ret 
+    
+    endp
+
+    ; Prints Port Data from Port Value Array 
+    ; Called in printPORTSCinfo 
+    ; 
+    invokePortPrinter proc near
+
+        push edx                 ; Save Registers  
+        push esi                 ;
+        push eax                 ; 
+        push ecx                 ;
+        ;------------------------;
+
+        lea esi, PortValue       ; 
+        mov cx, 05h              ; Max Port Amount (Example)
+      
+      invokePortPrinterloop:
+          
+          mov eax, [esi]           ; 
+          cmp eax, 0h              ;
+          jz outOfInvokePortPrinter;
+          
+          push ax 
+          shr eax, 16
+          push ax 
+
+          ; Print header 
+          mov ah, 09h              ;
+          lea dx, PORTSCMsg        ;
+          int 21h                  ; 
+
+          call printWordFromStackRM;
+        call printWordFromStackRM  ; 
+          call printNewLineRM         
+
+          add esi, 04h             ;
+          loop invokePortPrinterloop
+
+      outOfInvokePortPrinter:
+          
+          ;------------------------;
+          pop ecx                  ; 
+        pop eax                    ; 
+        pop esi                    ; 
+        pop edx                    ; Recover 
+
+        ret 
+        
+    endp
+
+
+    ; Prints information about Operation Registres from memory  
+    ;
+    printOperRegInfo proc near 
+
+        push edx                ;  
+        push eax                ;
+        push ebx                ;
+        push edi                ;  
+        ;-----------------------;
+
+        mov ebx, HCBaseAddress  ; Base Address
+
+        mov edi, ebx            ; Base Address Storage 
+        
+        mov ah, 09h             ; Print String 
+        lea dx, USBCMDmsg       ; 
+        int 21h                 ; 
+
+        mov eax, USBCMDoffset
+        call retrieveOperRegister
+        call printNewLineRM
+
+        mov ah, 09h             ; Print String 
+        lea dx, USBSTSmsg       ; 
+        int 21h                 ; 
+
+        mov ebx, edi            ; Base Address
+        mov eax, USBSTSoffset   ; 
+        call retrieveOperRegister
+        call printNewLineRM
+
+        mov ah, 09h             ; Print String 
+        lea dx, USBINTmsg       ; 
+        int 21h                 ; 
+
+        mov ebx, edi            ; Base Address
+        mov eax, USBINToffset   ; 
+        call retrieveOperRegister
+        call printNewLineRM
+
+        mov ah, 09h             ; Print String 
+        lea dx, FRINDEXMsg      ; 
+        int 21h                 ; 
+
+        mov ebx, edi            ; Base Address
+        mov eax, FRINDEXoffset  ; 
+        call retrieveOperRegister
+        call printNewLineRM
+
+        mov ah, 09h             ; Print String 
+        lea dx, CTRLDSMsg       ; 
+        int 21h                 ; 
+
+        mov ebx, edi            ; Base Address
+        mov eax, CTRLDSoffset   ; 
+        call retrieveOperRegister
+        call printNewLineRM
+
+        mov ah, 09h             ; Print String 
+        lea dx, PListBaseMsg    ; 
+        int 21h                 ; 
+
+        mov ebx, edi            ; Base Address
+        mov eax, PeriodLBoffset ; 
+        call retrieveOperRegister
+        call printNewLineRM
+
+        mov ah, 09h             ; Print String 
+        lea dx, AListBaseMsg    ; 
+        int 21h                   
+
+        mov ebx, edi            ; Base Address
+        mov eax, AsуnchLBoffset ; 
+        call retrieveOperRegister
+        call printNewLineRM
+
+        mov ah, 09h             ; Print String 
+        lea dx, CONFIGMsg       ; 
+        int 21h                 ; 
+
+        mov ebx, edi            ; Base Address
+        mov eax, CONFIGoffgset  ; 
+        call retrieveOperRegister
+
+        ;-----------------------;
+        pop edi                 ;
+        pop ebx                 ;
+        pop eax                 ; 
+        pop edx                 ;
+
+        ret
+
+    endp
+
+    ; Prints Info about Legacy Registers 
+    ; Registers should be retrieved earlier
+    ; 
+    printUSBLEGSUPReg proc near
+        
+        push eax                    ; Save 
+        push edx                 ;
+        ;------------------------; 
+
+        lea dx, USBLEGSUPmsg     ; USBLEGSUP Register 
+        mov ah, 09h              ;
+        int 21h 
+        
+        mov eax, USBLEGSUPReg    ; Prints USBLEGSUP Register 
+        push ax
+        shr eax, 16  
+        push ax 
+        call printWordFromStackRM
+        call printWordFromStackRM    
+
+        call printNewLineRM
+
+        lea dx, USBLEGCTLSmsg    ; USBLEGSUP Register 
+        mov ah, 09h              ;
+        int 21h 
+
+        mov eax, USBLEGCTLSTSReg ; Prints USBLEGCTLSTS Register 
+        push ax
+        shr eax, 16  
+        push ax 
+        call printWordFromStackRM
+        call printWordFromStackRM    
+
+        ;------------------------;
+        pop edx                  ; 
+        pop eax                  ;  Recover  
+
+        ret 
+
+    endp
+
+    ; Prints information about USB class
+    ;
+    ; AX  - containes USB HC class parameter
+    ; EDI - containes offset of HC Parameters 
+    displayUSBtype proc near 
+
+        push eax               ;
+        push edx               ; Save dx 
+        ;----------------------;
+
+        ; AX - parameter
+        cmp ax, 0h             ;
+        jz  showusb00          ; UHCI
+        cmp ax, 10h            ;
+        jz  showusb10          ; OHCI
+        cmp ax, 20h            ;
+        jz  showusb20          ; EHCI
+        cmp ax, 30h            ;
+        jz  showusb30          ; xHCI
+
+      showusb00:
+        lea dx, usb_00         ; Sets Appropriate String 
+        jmp outUSBtype         ; 
+
+      showusb10:
+        lea dx, usb_10         ; Sets Appropriate String 
+        jmp outUSBtype         ;
+
+      showusb20:
+        lea dx, usb_20         ; Sets Appropriate String 
+        jmp outUSBtype         ;
+
+      showusb30:
+        lea dx, usb_30         ; Sets Appropriate String 
+
+      outUSBtype:              ; Point to jump out of type definition
+        mov ah, 09h            ; Print string
+        int 21h                ;
+
+        ; Print PCI Address
+        lea edx, HCPCIAddressStorage
+        add edx, edi 
+        mov eax, [edx]
+        push ax 
+        shr eax, 16 
+        push ax 
+        call printWordFromStackRM
+        call printWordFromStackRM
+
+        mov ah, 09h
+        lea dx, sBraket
+        int 21h
+
+        ;----------------------;
+        pop edx                ; Recover DX
+        pop eax                ;
+
+        db 0C3h                ; ret
+
+    endp
+
+    ; Prints Message 
+    ;
+    dummyHCPrint proc near
+
+        push ax                ;
+        push dx                   ; Save dx
+        ;----------------------;
+
+        mov ah, 09h 
+        lea dx, usb_dummy
+        int 21h
+
+        ;----------------------;
+        pop dx                 ; Recover DX
+        pop ax                 ;
+
+        db 0C3h                ; ret
+
+    endp
+
+    ; Prints Bus Number 
+    ;
+    printBusNumber proc near 
+
+        push eax               ;
+        push edx               ; Save dx
+        ;----------------------;
+
+        lea dx, sBusMsg
+        mov ah, 09h 
+        int 21h
+
+        ;lea edx, HCPCIAddressStorage
+        ;add edx, edi
+        ;mov eax, [edx]
+        
+        ;push ax
+        ;shr eax, 16
+        ;push ax 
+        ;call printWordFromStackRM
+        ;call printWordFromStackPM
+        
+        call printNewLineRM
+        
+        ;----------------------;
+        pop edx                ; Recover DX
+        pop eax                ;
+
+        db 0C3h                ; ret
+
+    endp
+
+endm
